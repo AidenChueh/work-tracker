@@ -7,13 +7,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "x-device-id required" }, { status: 400 });
   }
 
-  const jobs = await prisma.job.findMany({
-    where: { deviceId, isActive: true },
-    include: { overtimeTiers: { orderBy: { afterHours: "asc" } } },
-    orderBy: { createdAt: "asc" },
-  });
-
-  return NextResponse.json(jobs);
+  try {
+    const jobs = await prisma.job.findMany({
+      where: { deviceId, isActive: true },
+      include: { overtimeTiers: { orderBy: { afterHours: "asc" } } },
+      orderBy: { createdAt: "asc" },
+    });
+    return NextResponse.json(jobs);
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {
