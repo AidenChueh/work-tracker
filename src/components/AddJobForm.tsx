@@ -13,6 +13,7 @@ type Job = {
   payDay: number | null;
   taxEnabled: boolean;
   overtimeTiers: { id: string; afterHours: number; rate: number }[];
+  breakDuration: number | null;
   breakRate: number | null;
   createdAt: string;
 };
