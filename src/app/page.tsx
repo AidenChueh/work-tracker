@@ -1,0 +1,247 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
+import { OnboardingForm } from "@/components/OnboardingForm";
+import { useDevice } from "@/hooks/useDevice";
+import { calcSessionIncome } from "@/lib/income";
+import type { OvertimeTier } from "@/lib/income";
+
+type Job = {
+  id: string;
+  name: string;
+  hourlyRate: number | null;
+  commissionPercentage: number | null;
+  payFrequency: string;
+  payDay: number | null;
+  taxEnabled: boolean;
+  breakDuration: number | null;
+  breakRate: number | null;
+  overtimeTiers: OvertimeTier[];
+  createdAt: string;
+};
+
+type WorkSession = {
+  id: string;
+  jobId: string;
+  job: Job;
+  clockIn: string;
+  clockOut: string | null;
+  breaks: { id: string; startTime: string; endTime: string | null; isPaid: boolean }[];
+};
+
+function formatDuration(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
+
+
+export default function Home() {
+  const { deviceId, userName, loaded } = useDevice();
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [selectedJobId, setSelectedJobId] = useState<string>("");
+  const [activeSession, setActiveSession] = useState<WorkSession | null>(null);
+  const [elapsed, setElapsed] = useState<number>(0);
+  const [loading, setLoading] = useState(true);
+  const [recentSessions, setRecentSessions] = useState<WorkSession[]>([]);
+  const [taxRate, setTaxRate] = useState(0);
+
+  useEffect(() => {
+    const stored = parseFloat(localStorage.getItem("taxRate") ?? "0");
+    setTaxRate(isNaN(stored) ? 0 : stored);
+  }, []);
+
+  const fetchJobs = useCallback(async (id: string) => {
+    const res = await fetch("/api/jobs", { headers: { "x-device-id": id } });
+    if (res.ok) {
+      const data: Job[] = await res.json();
+      setJobs(data);
+      if (data.length > 0) setSelectedJobId((prev) => prev || data[0].id);
+    }
+  }, []);
+
+  const fetchActiveSession = useCallback(async (id: string) => {
+    const res = await fetch("/api/sessions/active", { headers: { "x-device-id": id } });
+    if (res.ok) setActiveSession(await res.json());
+  }, []);
+
+  const fetchRecentSessions = useCallback(async (id: string) => {
+    const res = await fetch("/api/sessions", { headers: { "x-device-id": id } });
+    if (res.ok) {
+      const data: WorkSession[] = await res.json();
+      setRecentSessions(data.filter((s) => s.clockOut !== null).slice(0, 3));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!deviceId || !loaded || userName === null) return;
+    Promise.all([
+      fetchJobs(deviceId),
+      fetchActiveSession(deviceId),
+      fetchRecentSessions(deviceId),
+    ]).finally(() => setLoading(false));
+  }, [deviceId, loaded, userName, fetchJobs, fetchActiveSession, fetchRecentSessions]);
+
+  useEffect(() => {
+    if (!activeSession) return;
+    const update = () => setElapsed(Date.now() - new Date(activeSession.clockIn).getTime());
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [activeSession]);
+
+  const handleClockIn = async () => {
+    if (!selectedJobId || !deviceId) return;
+    const res = await fetch("/api/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-device-id": deviceId },
+      body: JSON.stringify({ jobId: selectedJobId }),
+    });
+    if (res.ok) { setActiveSession(await res.json()); setElapsed(0); }
+  };
+
+  const handleClockOut = async () => {
+    if (!activeSession || !deviceId) return;
+    const res = await fetch(`/api/sessions/${activeSession.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "x-device-id": deviceId },
+      body: JSON.stringify({ clockOut: "now" }),
+    });
+    if (res.ok) {
+      setActiveSession(null);
+      setElapsed(0);
+      fetchRecentSessions(deviceId);
+    }
+  };
+
+  if (!loaded) return null;
+
+  if (userName === null) {
+    return (
+      <OnboardingForm
+        onComplete={(name) => {
+          localStorage.setItem("userName", name);
+          window.location.reload();
+        }}
+      />
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-950">
+        <div className="text-white">載入中...</div>
+      </div>
+    );
+  }
+
+  return (
+    <main className="min-h-screen bg-gray-950 text-white">
+      <div className="max-w-md mx-auto px-4 py-8">
+        <h1 className="text-xl font-semibold text-center mb-6">歡迎，{userName}</h1>
+
+        {/* Active session timer */}
+        {activeSession && (
+          <div className="bg-green-900/40 border border-green-700 rounded-2xl p-6 mb-6 text-center">
+            <p className="text-green-400 text-sm uppercase tracking-wide mb-1">
+              打卡中 — {activeSession.job.name}
+            </p>
+            <p className="text-5xl font-mono font-bold">{formatDuration(elapsed)}</p>
+            <p className="text-gray-400 text-sm mt-2">
+              自 {new Date(activeSession.clockIn).toLocaleTimeString("zh-TW")}
+            </p>
+          </div>
+        )}
+
+        {/* Job selector */}
+        {!activeSession && (
+          <div className="mb-4">
+            {jobs.length > 0 ? (
+              <>
+                <label className="block text-xs text-gray-500 uppercase tracking-wide mb-2">選擇工作</label>
+                <select
+                  value={selectedJobId}
+                  onChange={(e) => setSelectedJobId(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-base focus:outline-none focus:border-blue-500"
+                >
+                  {jobs.map((job) => (
+                    <option key={job.id} value={job.id}>
+                      {job.name}{job.hourlyRate != null ? ` · $${job.hourlyRate}/hr` : ""}
+                    </option>
+                  ))}
+                </select>
+              </>
+            ) : (
+              <div className="text-center py-4">
+                <p className="text-gray-400 mb-3">還沒有工作</p>
+                <Link
+                  href="/jobs"
+                  className="inline-block bg-blue-600 hover:bg-blue-700 text-white text-sm px-5 py-2.5 rounded-xl transition-colors"
+                >
+                  前往工作管理新增
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Clock in/out button */}
+        {(jobs.length > 0 || activeSession) && (
+          <button
+            onClick={activeSession ? handleClockOut : handleClockIn}
+            disabled={!activeSession && !selectedJobId}
+            className={`w-full py-5 rounded-2xl text-xl font-bold transition-all mt-2 ${
+              activeSession
+                ? "bg-red-600 hover:bg-red-700 active:bg-red-800"
+                : "bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            }`}
+          >
+            {activeSession ? "打卡下班" : "打卡上班"}
+          </button>
+        )}
+
+        {/* Recent sessions */}
+        {recentSessions.length > 0 && !activeSession && (
+          <div className="mt-8">
+            <h2 className="text-gray-400 text-xs uppercase tracking-wide mb-3">最近紀錄</h2>
+            <div className="space-y-1">
+              {recentSessions.map((session) => {
+                const duration = session.clockOut
+                  ? new Date(session.clockOut).getTime() - new Date(session.clockIn).getTime()
+                  : 0;
+                const income = calcSessionIncome(session, taxRate);
+                return (
+                  <div key={session.id} className="bg-gray-800 rounded-xl p-4 flex justify-between items-center">
+                    <div>
+                      <p className="font-medium">{session.job.name}</p>
+                      <p className="text-gray-400 text-sm">
+                        {new Date(session.clockIn).toLocaleDateString("zh-TW")}
+                        {" "}
+                        {new Date(session.clockIn).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" })}
+                        {session.clockOut && (
+                          <> — {new Date(session.clockOut).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" })}</>
+                        )}
+                      </p>
+                      {income !== null && (
+                        <p className="text-green-400 text-sm mt-0.5">
+                          ${income.toFixed(2)}
+                          {session.job.taxEnabled && taxRate > 0 && (
+                            <span className="text-gray-500 text-xs ml-1">(稅後)</span>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                    <p className="font-mono text-gray-300 text-sm">{formatDuration(duration)}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}

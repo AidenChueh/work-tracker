@@ -1,0 +1,65 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Device {
+  id        String        @id
+  createdAt DateTime      @default(now())
+  jobs      Job[]
+  sessions  WorkSession[]
+}
+
+model Job {
+  id                   String        @id @default(uuid())
+  deviceId             String
+  device               Device        @relation(fields: [deviceId], references: [id])
+  name                 String
+  hourlyRate           Float?
+  commissionPercentage Float?
+  payFrequency         String        @default("weekly")
+  payDay               Int?
+  taxEnabled           Boolean       @default(false)
+  breakDuration        Int?
+  breakRate            Float?
+  isActive             Boolean       @default(true)
+  createdAt            DateTime      @default(now())
+  sessions             WorkSession[]
+  overtimeTiers        OvertimeTier[]
+}
+
+model OvertimeTier {
+  id         String @id @default(uuid())
+  jobId      String
+  job        Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  afterHours Float
+  rate       Float
+  order      Int    @default(0)
+}
+
+model WorkSession {
+  id        String    @id @default(uuid())
+  deviceId  String
+  device    Device    @relation(fields: [deviceId], references: [id])
+  jobId     String
+  job       Job       @relation(fields: [jobId], references: [id])
+  clockIn   DateTime
+  clockOut  DateTime?
+  notes     String?
+  createdAt DateTime  @default(now())
+  breaks    Break[]
+}
+
+model Break {
+  id        String      @id @default(uuid())
+  sessionId String
+  session   WorkSession @relation(fields: [sessionId], references: [id])
+  startTime DateTime
+  endTime   DateTime?
+  isPaid    Boolean     @default(false)
+  createdAt DateTime    @default(now())
+}
