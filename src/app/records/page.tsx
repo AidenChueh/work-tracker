@@ -135,8 +135,10 @@ export default function RecordsPage() {
   const [addSubmitting, setAddSubmitting] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editClockIn, setEditClockIn] = useState("");
-  const [editClockOut, setEditClockOut] = useState("");
+  const [editClockInDate, setEditClockInDate] = useState("");
+  const [editClockInTime, setEditClockInTime] = useState("");
+  const [editClockOutDate, setEditClockOutDate] = useState("");
+  const [editClockOutTime, setEditClockOutTime] = useState("");
   const [editSubmitting, setEditSubmitting] = useState(false);
 
   useEffect(() => {
@@ -246,8 +248,12 @@ export default function RecordsPage() {
 
   function startEdit(s: WorkSession) {
     setEditingId(s.id);
-    setEditClockIn(toDatetimeLocal(s.clockIn));
-    setEditClockOut(s.clockOut ? toDatetimeLocal(s.clockOut) : "");
+    const inLocal = toDatetimeLocal(s.clockIn);
+    setEditClockInDate(inLocal.slice(0, 10));
+    setEditClockInTime(inLocal.slice(11, 16));
+    const outLocal = s.clockOut ? toDatetimeLocal(s.clockOut) : inLocal;
+    setEditClockOutDate(outLocal.slice(0, 10));
+    setEditClockOutTime(outLocal.slice(11, 16));
   }
 
   async function handleEdit(e: React.FormEvent) {
@@ -255,8 +261,10 @@ export default function RecordsPage() {
     if (!deviceId || !editingId) return;
     setEditSubmitting(true);
     const body: Record<string, string> = {};
-    if (editClockIn) body.clockIn = new Date(editClockIn).toISOString();
-    if (editClockOut) body.clockOut = new Date(editClockOut).toISOString();
+    if (editClockInDate && editClockInTime)
+      body.clockIn = new Date(`${editClockInDate}T${editClockInTime}`).toISOString();
+    if (editClockOutDate && editClockOutTime)
+      body.clockOut = new Date(`${editClockOutDate}T${editClockOutTime}`).toISOString();
     const res = await fetch(`/api/sessions/${editingId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json", "x-device-id": deviceId },
@@ -304,7 +312,7 @@ export default function RecordsPage() {
         </div>
 
         {showAddForm && (
-          <form onSubmit={handleAdd} className="bg-gray-800 rounded-2xl p-4 mb-4 space-y-3 overflow-hidden">
+          <form onSubmit={handleAdd} className="bg-gray-800 rounded-2xl p-4 mb-4 space-y-3">
             <p className="text-sm font-medium text-gray-300">新增打卡紀錄</p>
             <div>
               <label className="text-xs text-gray-400 block mb-1">工作</label>
@@ -495,27 +503,53 @@ export default function RecordsPage() {
                                   <form
                                     key={s.id}
                                     onSubmit={handleEdit}
-                                    className="bg-gray-700 rounded-xl p-3 space-y-2 overflow-hidden"
+                                    className="bg-gray-700 rounded-xl p-3 space-y-2"
                                   >
                                     <div>
                                       <label className="text-xs text-gray-400 block mb-1">上班時間</label>
-                                      <input
-                                        type="datetime-local"
-                                        value={editClockIn}
-                                        onChange={(e) => setEditClockIn(e.target.value)}
-                                        required
-                                        className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-1.5 text-sm text-white"
-                                      />
+                                      <div className="grid grid-cols-2 gap-1.5">
+                                        <div className="min-w-0">
+                                          <input
+                                            type="date"
+                                            value={editClockInDate}
+                                            onChange={(e) => setEditClockInDate(e.target.value)}
+                                            required
+                                            className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-2 py-1.5 text-xs text-white"
+                                          />
+                                        </div>
+                                        <div className="min-w-0">
+                                          <input
+                                            type="time"
+                                            value={editClockInTime}
+                                            onChange={(e) => setEditClockInTime(e.target.value)}
+                                            required
+                                            className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-2 py-1.5 text-xs text-white"
+                                          />
+                                        </div>
+                                      </div>
                                     </div>
                                     <div>
                                       <label className="text-xs text-gray-400 block mb-1">下班時間</label>
-                                      <input
-                                        type="datetime-local"
-                                        value={editClockOut}
-                                        onChange={(e) => setEditClockOut(e.target.value)}
-                                        required
-                                        className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-1.5 text-sm text-white"
-                                      />
+                                      <div className="grid grid-cols-2 gap-1.5">
+                                        <div className="min-w-0">
+                                          <input
+                                            type="date"
+                                            value={editClockOutDate}
+                                            onChange={(e) => setEditClockOutDate(e.target.value)}
+                                            required
+                                            className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-2 py-1.5 text-xs text-white"
+                                          />
+                                        </div>
+                                        <div className="min-w-0">
+                                          <input
+                                            type="time"
+                                            value={editClockOutTime}
+                                            onChange={(e) => setEditClockOutTime(e.target.value)}
+                                            required
+                                            className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-2 py-1.5 text-xs text-white"
+                                          />
+                                        </div>
+                                      </div>
                                     </div>
                                     <div className="flex gap-2">
                                       <button
