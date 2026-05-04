@@ -17,6 +17,7 @@ type Job = {
   breakDuration: number | null;
   breakRate: number | null;
   penaltyRatesEnabled: boolean;
+  penaltyBaseRate: number | null;
   publicHolidayRate: number;
   saturdayRate: number;
   sundayRate: number;
@@ -65,6 +66,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
   const [breakDuration, setBreakDuration] = useState(job.breakDuration?.toString() ?? "");
   const [breakRate, setBreakRate] = useState(job.breakRate?.toString() ?? "");
   const [penaltyRatesEnabled, setPenaltyRatesEnabled] = useState(job.penaltyRatesEnabled);
+  const [penaltyBaseRate, setPenaltyBaseRate] = useState(job.penaltyBaseRate?.toString() ?? "");
   const [publicHolidayRate, setPublicHolidayRate] = useState(job.publicHolidayRate.toString());
   const [saturdayRate, setSaturdayRate] = useState(job.saturdayRate.toString());
   const [sundayRate, setSundayRate] = useState(job.sundayRate.toString());
@@ -98,6 +100,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
         breakDuration: hasBreak ? parseInt(breakDuration) || null : null,
         breakRate: hasBreak ? parseFloat(breakRate) || null : null,
         penaltyRatesEnabled,
+        penaltyBaseRate: penaltyBaseRate ? parseFloat(penaltyBaseRate) : null,
         publicHolidayRate: parseFloat(publicHolidayRate) || 2.5,
         saturdayRate: parseFloat(saturdayRate) || 1.5,
         sundayRate: parseFloat(sundayRate) || 2.0,
@@ -316,43 +319,54 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
               </div>
             </div>
           )}
-        </>
-      )}
-
-      {/* Penalty Rates */}
-      <div className="border-t border-gray-600/50 pt-3">
-        <div className="flex items-center justify-between mb-2">
-          <div>
-            <span className="text-xs text-gray-300">澳洲 Penalty Rates</span>
-            <p className="text-[10px] text-gray-500 mt-0.5">假日薪資加乘</p>
-          </div>
-          <Toggle checked={penaltyRatesEnabled} onChange={() => setPenaltyRatesEnabled((v) => !v)} />
-        </div>
-        {penaltyRatesEnabled && (
-          <div className="space-y-2 mt-2 bg-gray-600/40 rounded-lg p-2.5">
-            {[
-              { label: "國定假日", value: publicHolidayRate, set: setPublicHolidayRate },
-              { label: "週六", value: saturdayRate, set: setSaturdayRate },
-              { label: "週日", value: sundayRate, set: setSundayRate },
-            ].map(({ label, value, set }) => (
-              <div key={label} className="flex items-center gap-2">
-                <span className="text-xs text-gray-300 w-16 shrink-0">{label}</span>
-                <div className="flex-1 flex items-center gap-1">
+          {/* Penalty Rates */}
+          <div className="border-t border-gray-600/50 pt-3">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <span className="text-xs text-gray-300">澳洲 Penalty Rates</span>
+                <p className="text-[10px] text-gray-500 mt-0.5">假日薪資加乘</p>
+              </div>
+              <Toggle checked={penaltyRatesEnabled} onChange={() => setPenaltyRatesEnabled((v) => !v)} />
+            </div>
+            {penaltyRatesEnabled && (
+              <div className="space-y-2 mt-2 bg-gray-600/40 rounded-lg p-2.5">
+                <div>
+                  <label className="block text-[10px] text-gray-400 mb-1">自訂基本時薪（$，選填）</label>
                   <input
                     type="number"
-                    value={value}
-                    onChange={(e) => set(e.target.value)}
-                    min="1"
-                    step="0.1"
-                    className="w-full bg-gray-600 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={penaltyBaseRate}
+                    onChange={(e) => setPenaltyBaseRate(e.target.value)}
+                    placeholder="不填則以工作時薪 × 倍率計算"
+                    min="0"
+                    step="0.01"
+                    className="w-full bg-gray-600 rounded-lg px-2 py-1.5 text-white text-xs placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
-                  <span className="text-xs text-gray-500 shrink-0">倍</span>
                 </div>
+                {[
+                  { label: "國定假日", value: publicHolidayRate, set: setPublicHolidayRate },
+                  { label: "週六", value: saturdayRate, set: setSaturdayRate },
+                  { label: "週日", value: sundayRate, set: setSundayRate },
+                ].map(({ label, value, set }) => (
+                  <div key={label} className="flex items-center gap-2">
+                    <span className="text-xs text-gray-300 w-16 shrink-0">{label}</span>
+                    <div className="flex-1 flex items-center gap-1">
+                      <input
+                        type="number"
+                        value={value}
+                        onChange={(e) => set(e.target.value)}
+                        min="1"
+                        step="0.1"
+                        className="w-full bg-gray-600 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <span className="text-xs text-gray-500 shrink-0">倍</span>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
 
       <div className="flex items-center justify-between py-1">
         <span className="text-xs text-gray-400">扣稅</span>

@@ -19,6 +19,7 @@ type Job = {
   breakDuration: number | null;
   breakRate: number | null;
   penaltyRatesEnabled: boolean;
+  penaltyBaseRate: number | null;
   publicHolidayRate: number;
   saturdayRate: number;
   sundayRate: number;

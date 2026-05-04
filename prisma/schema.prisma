@@ -29,6 +29,7 @@ model Job {
   breakDuration        Int?
   breakRate            Float?
   penaltyRatesEnabled  Boolean       @default(false)
+  penaltyBaseRate      Float?
   publicHolidayRate    Float         @default(2.5)
   saturdayRate         Float         @default(1.5)
   sundayRate           Float         @default(2.0)

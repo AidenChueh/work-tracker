@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
   const {
     name, hourlyRate, commissionPercentage, commissionRequired,
     payFrequency, payDay, taxEnabled, breakDuration, breakRate, overtimeTiers,
-    penaltyRatesEnabled, publicHolidayRate, saturdayRate, sundayRate,
+    penaltyRatesEnabled, penaltyBaseRate, publicHolidayRate, saturdayRate, sundayRate,
   } = body;
 
   if (!name) {
@@ -52,6 +52,7 @@ export async function POST(req: NextRequest) {
       breakDuration: breakDuration ?? null,
       breakRate: breakRate ?? null,
       penaltyRatesEnabled: penaltyRatesEnabled ?? false,
+      penaltyBaseRate: penaltyBaseRate ?? null,
       publicHolidayRate: publicHolidayRate ?? 2.5,
       saturdayRate: saturdayRate ?? 1.5,
       sundayRate: sundayRate ?? 2.0,

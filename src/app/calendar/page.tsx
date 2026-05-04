@@ -17,6 +17,7 @@ type Job = {
   breakDuration: number | null;
   breakRate: number | null;
   penaltyRatesEnabled: boolean;
+  penaltyBaseRate: number | null;
   publicHolidayRate: number;
   saturdayRate: number;
   sundayRate: number;
@@ -241,13 +242,6 @@ export default function CalendarPage() {
     });
   }
 
-  function goToday() {
-    const now = new Date();
-    setViewYear(now.getFullYear());
-    setViewMonth(now.getMonth());
-    setSelection(null);
-  }
-
   const todayStr = localDateStr(new Date());
 
   if (!loaded || loading) {
@@ -272,17 +266,9 @@ export default function CalendarPage() {
               <path strokeLinecap="round" d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <div className="flex items-center gap-3">
-            <span className="text-lg font-semibold">
-              {viewYear}年{viewMonth + 1}月
-            </span>
-            <button
-              onClick={goToday}
-              className="text-xs text-blue-400 border border-blue-400/40 px-2 py-0.5 rounded-lg hover:bg-blue-400/10 transition-colors"
-            >
-              今天
-            </button>
-          </div>
+          <span className="text-lg font-semibold">
+            {viewYear}年{viewMonth + 1}月
+          </span>
           <button
             onClick={() => navigateMonth(1)}
             className="p-2 rounded-xl hover:bg-gray-800 text-gray-400 hover:text-white transition-colors"
@@ -315,6 +301,9 @@ export default function CalendarPage() {
             const isFuture = day > new Date();
             const isClickable = isCurrentMonth && !isFuture && daySessions.length > 0;
             const isInPeriod = isCurrentMonth && payPeriodDaySet.has(dateStr);
+            const isInSelectedPeriod = isCurrentMonth && selection?.type === "period"
+              && startOfDay(day).getTime() >= new Date(selection.periodStart).getTime()
+              && startOfDay(day).getTime() <= new Date(selection.periodEnd).getTime();
 
             return (
               <div
@@ -325,7 +314,7 @@ export default function CalendarPage() {
                 }}
                 className={`relative flex flex-col items-center pt-1 pb-1.5 rounded-xl min-h-[64px] transition-colors
                   ${isClickable ? "cursor-pointer hover:bg-gray-800" : ""}
-                  ${isSelected ? "bg-gray-800 ring-1 ring-blue-500" : isInPeriod ? "bg-amber-500/5" : ""}
+                  ${isSelected ? "bg-gray-800 ring-1 ring-blue-500" : isInSelectedPeriod ? "bg-amber-500/20" : isInPeriod ? "bg-amber-500/5" : ""}
                 `}
               >
                 <div className={`w-7 h-7 flex items-center justify-center rounded-full text-sm font-medium mb-0.5

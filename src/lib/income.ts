@@ -8,6 +8,7 @@ export type JobBase = {
   breakRate: number | null;
   overtimeTiers: OvertimeTier[];
   penaltyRatesEnabled: boolean;
+  penaltyBaseRate: number | null;
   publicHolidayRate: number;
   saturdayRate: number;
   sundayRate: number;
@@ -48,7 +49,7 @@ export function calcSessionGross(session: SessionBase): number | null {
 
   if (session.job.hourlyRate == null) return null;
 
-  const { hourlyRate, breakDuration, breakRate, overtimeTiers } = session.job;
+  const { hourlyRate, breakDuration, breakRate, overtimeTiers, penaltyBaseRate } = session.job;
   const penaltyMultiplier = getPenaltyMultiplier(session);
 
   const totalMs = new Date(session.clockOut).getTime() - new Date(session.clockIn).getTime();
@@ -60,7 +61,9 @@ export function calcSessionGross(session: SessionBase): number | null {
 
   const sorted = [...overtimeTiers].sort((a, b) => a.afterHours - b.afterHours);
   const breakpoints = [0, ...sorted.map((t) => t.afterHours)];
-  const ratesPerSegment = [hourlyRate, ...sorted.map((t) => t.rate)];
+  // For penalty period: use penaltyBaseRate ?? hourlyRate as the base tier rate
+  const effectiveBase = penaltyMultiplier > 1 ? (penaltyBaseRate ?? hourlyRate) : hourlyRate;
+  const ratesPerSegment = [effectiveBase, ...sorted.map((t) => t.rate)];
 
   let workGross = 0;
   for (let i = 0; i < breakpoints.length; i++) {
