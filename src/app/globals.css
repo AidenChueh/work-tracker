@@ -11,3 +11,11 @@
     scrollbar-width: none;
   }
 }
+
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"] {
+  color-scheme: dark;
+  min-width: 0;
+  max-width: 100%;
+}
