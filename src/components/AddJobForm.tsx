@@ -12,6 +12,7 @@ type Job = {
   commissionRequired: boolean;
   payFrequency: string;
   payDay: number | null;
+  payWeekStart: number | null;
   taxEnabled: boolean;
   overtimeTiers: { id: string; afterHours: number; rate: number }[];
   breakDuration: number | null;
@@ -21,6 +22,9 @@ type Job = {
   publicHolidayRate: number;
   saturdayRate: number;
   sundayRate: number;
+  saturdayHourlyRate: number | null;
+  sundayHourlyRate: number | null;
+  publicHolidayHourlyRate: number | null;
   createdAt: string;
 };
 
@@ -52,6 +56,7 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
   const [commissionRequired, setCommissionRequired] = useState(false);
   const [payFrequency, setPayFrequency] = useState("weekly");
   const [payDay, setPayDay] = useState("");
+  const [payWeekStart, setPayWeekStart] = useState("");
   const [taxEnabled, setTaxEnabled] = useState(false);
   const [overtimeTiers, setOvertimeTiers] = useState<OvertimeTier[]>([]);
   const [hasBreak, setHasBreak] = useState(false);
@@ -62,6 +67,9 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
   const [publicHolidayRate, setPublicHolidayRate] = useState("2.5");
   const [saturdayRate, setSaturdayRate] = useState("1.5");
   const [sundayRate, setSundayRate] = useState("2.0");
+  const [saturdayHourlyRate, setSaturdayHourlyRate] = useState("");
+  const [sundayHourlyRate, setSundayHourlyRate] = useState("");
+  const [publicHolidayHourlyRate, setPublicHolidayHourlyRate] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const addTier = () => setOvertimeTiers((prev) => [...prev, { afterHours: "", rate: "" }]);
@@ -85,6 +93,7 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
         commissionRequired: payType === "commission" ? commissionRequired : false,
         payFrequency,
         payDay: payDay !== "" ? parseInt(payDay) : null,
+        payWeekStart: payWeekStart !== "" ? parseInt(payWeekStart) : null,
         taxEnabled,
         overtimeTiers: overtimeTiers
           .filter((t) => t.afterHours !== "" && t.rate !== "")
@@ -96,6 +105,9 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
         publicHolidayRate: parseFloat(publicHolidayRate) || 2.5,
         saturdayRate: parseFloat(saturdayRate) || 1.5,
         sundayRate: parseFloat(sundayRate) || 2.0,
+        saturdayHourlyRate: saturdayHourlyRate ? parseFloat(saturdayHourlyRate) : null,
+        sundayHourlyRate: sundayHourlyRate ? parseFloat(sundayHourlyRate) : null,
+        publicHolidayHourlyRate: publicHolidayHourlyRate ? parseFloat(publicHolidayHourlyRate) : null,
       }),
     });
 
@@ -105,6 +117,8 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
     }
     setSubmitting(false);
   };
+
+  const showWeekdaySelector = payFrequency === "weekly" || payFrequency === "bi_weekly";
 
   return (
     <form onSubmit={handleSubmit} className="bg-gray-800 rounded-2xl p-5 mb-4 space-y-4">
@@ -134,7 +148,7 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
                 payType === type ? "bg-blue-600 text-white" : "bg-gray-700 text-gray-300 hover:bg-gray-600"
               }`}
             >
-              {type === "hourly" ? "時薪" : "佣金"}
+              {type === "hourly" ? "時薪" : "抽成"}
             </button>
           ))}
         </div>
@@ -158,7 +172,7 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
       {payType === "commission" && (
         <>
           <div>
-            <label className="block text-sm text-gray-400 mb-1">佣金比例（%）</label>
+            <label className="block text-sm text-gray-400 mb-1">抽成比例（%）</label>
             <input
               type="number"
               value={commissionPercentage}
@@ -181,17 +195,16 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
         <label className="block text-sm text-gray-400 mb-1">發薪頻率</label>
         <select
           value={payFrequency}
-          onChange={(e) => { setPayFrequency(e.target.value); setPayDay(""); }}
+          onChange={(e) => { setPayFrequency(e.target.value); setPayDay(""); setPayWeekStart(""); }}
           className="w-full bg-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="weekly">每週</option>
           <option value="bi_weekly">每兩週</option>
           <option value="monthly">每月</option>
-          <option value="custom">自訂</option>
         </select>
       </div>
 
-      {payFrequency === "weekly" && (
+      {showWeekdaySelector && (
         <div>
           <label className="block text-sm text-gray-400 mb-1">發薪日（星期幾）</label>
           <select
@@ -204,6 +217,23 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
               <option key={i} value={i}>星期{day}</option>
             ))}
           </select>
+        </div>
+      )}
+
+      {showWeekdaySelector && (
+        <div>
+          <label className="block text-sm text-gray-400 mb-1">計薪週起始日（選填）</label>
+          <select
+            value={payWeekStart}
+            onChange={(e) => setPayWeekStart(e.target.value)}
+            className="w-full bg-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">預設（依發薪日往前推算）</option>
+            {WEEKDAYS.map((day, i) => (
+              <option key={i} value={i}>星期{day}</option>
+            ))}
+          </select>
+          <p className="text-xs text-gray-500 mt-1">例如：設定星期四，計薪週為「星期四到星期三」</p>
         </div>
       )}
 
@@ -310,6 +340,7 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
               </div>
             </div>
           )}
+
           {/* Penalty Rates */}
           <div className="border-t border-gray-700/50 pt-4">
             <div className="flex items-center justify-between mb-2">
@@ -333,24 +364,38 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
                     className="w-full bg-gray-700 rounded-lg px-3 py-1.5 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
+                <p className="text-xs text-gray-500">倍率與固定時薪二擇一，設定固定時薪優先使用</p>
                 {[
-                  { label: "國定假日", value: publicHolidayRate, set: setPublicHolidayRate, default: "2.5" },
-                  { label: "週六", value: saturdayRate, set: setSaturdayRate, default: "1.5" },
-                  { label: "週日", value: sundayRate, set: setSundayRate, default: "2.0" },
-                ].map(({ label, value, set, default: def }) => (
-                  <div key={label} className="flex items-center gap-3">
-                    <span className="text-sm text-gray-300 w-20 shrink-0">{label}</span>
-                    <div className="flex-1 flex items-center gap-1">
-                      <input
-                        type="number"
-                        value={value}
-                        onChange={(e) => set(e.target.value)}
-                        placeholder={def}
-                        min="1"
-                        step="0.1"
-                        className="w-full bg-gray-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                      <span className="text-sm text-gray-500 shrink-0">倍</span>
+                  { label: "週六", rateVal: saturdayRate, rateSet: setSaturdayRate, hourlyVal: saturdayHourlyRate, hourlySet: setSaturdayHourlyRate, def: "1.5" },
+                  { label: "週日", rateVal: sundayRate, rateSet: setSundayRate, hourlyVal: sundayHourlyRate, hourlySet: setSundayHourlyRate, def: "2.0" },
+                  { label: "國定假日", rateVal: publicHolidayRate, rateSet: setPublicHolidayRate, hourlyVal: publicHolidayHourlyRate, hourlySet: setPublicHolidayHourlyRate, def: "2.5" },
+                ].map(({ label, rateVal, rateSet, hourlyVal, hourlySet, def }) => (
+                  <div key={label}>
+                    <span className="text-sm text-gray-300 block mb-1.5">{label}</span>
+                    <div className="flex gap-2">
+                      <div className="flex-1 flex items-center gap-1">
+                        <input
+                          type="number"
+                          value={rateVal}
+                          onChange={(e) => rateSet(e.target.value)}
+                          placeholder={def}
+                          min="1"
+                          step="0.1"
+                          className="w-full bg-gray-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-gray-500 shrink-0">× 倍</span>
+                      </div>
+                      <div className="flex-1 flex items-center gap-1">
+                        <input
+                          type="number"
+                          value={hourlyVal}
+                          onChange={(e) => hourlySet(e.target.value)}
+                          placeholder="固定 $/hr"
+                          min="0"
+                          step="0.01"
+                          className="w-full bg-gray-700 rounded-lg px-3 py-1.5 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
                     </div>
                   </div>
                 ))}

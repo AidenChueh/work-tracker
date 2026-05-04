@@ -25,8 +25,9 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const {
     name, hourlyRate, commissionPercentage, commissionRequired,
-    payFrequency, payDay, taxEnabled, breakDuration, breakRate, overtimeTiers,
+    payFrequency, payDay, payWeekStart, taxEnabled, breakDuration, breakRate, overtimeTiers,
     penaltyRatesEnabled, penaltyBaseRate, publicHolidayRate, saturdayRate, sundayRate,
+    saturdayHourlyRate, sundayHourlyRate, publicHolidayHourlyRate,
   } = body;
 
   if (!name) {
@@ -48,6 +49,7 @@ export async function POST(req: NextRequest) {
       commissionRequired: commissionRequired ?? false,
       payFrequency: payFrequency ?? "weekly",
       payDay: payDay ?? null,
+      payWeekStart: payWeekStart ?? null,
       taxEnabled: taxEnabled ?? false,
       breakDuration: breakDuration ?? null,
       breakRate: breakRate ?? null,
@@ -56,6 +58,9 @@ export async function POST(req: NextRequest) {
       publicHolidayRate: publicHolidayRate ?? 2.5,
       saturdayRate: saturdayRate ?? 1.5,
       sundayRate: sundayRate ?? 2.0,
+      saturdayHourlyRate: saturdayHourlyRate ?? null,
+      sundayHourlyRate: sundayHourlyRate ?? null,
+      publicHolidayHourlyRate: publicHolidayHourlyRate ?? null,
       overtimeTiers: Array.isArray(overtimeTiers) && overtimeTiers.length > 0
         ? { create: overtimeTiers.map((t: { afterHours: number; rate: number }, i: number) => ({ afterHours: t.afterHours, rate: t.rate, order: i })) }
         : undefined,

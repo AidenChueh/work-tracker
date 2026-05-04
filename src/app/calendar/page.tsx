@@ -12,6 +12,7 @@ type Job = {
   commissionRequired: boolean;
   payFrequency: string;
   payDay: number | null;
+  payWeekStart: number | null;
   taxEnabled: boolean;
   overtimeTiers: { afterHours: number; rate: number }[];
   breakDuration: number | null;
@@ -21,6 +22,9 @@ type Job = {
   publicHolidayRate: number;
   saturdayRate: number;
   sundayRate: number;
+  saturdayHourlyRate: number | null;
+  sundayHourlyRate: number | null;
+  publicHolidayHourlyRate: number | null;
 };
 
 type Break = {
@@ -75,7 +79,18 @@ function fmtTime(iso: string): string {
   return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
 }
 
-function weeklyPeriodForCell(cellDate: Date): { start: Date; end: Date } {
+function weeklyPeriodForCell(cellDate: Date, payWeekStart?: number | null): { start: Date; end: Date } {
+  if (payWeekStart != null) {
+    const periodEndDow = (payWeekStart - 1 + 7) % 7;
+    const cellDow = cellDate.getDay();
+    const daysFromPeriodEndToPayday = (cellDow - periodEndDow + 7) % 7 || 7;
+    const end = new Date(cellDate);
+    end.setDate(cellDate.getDate() - daysFromPeriodEndToPayday);
+    const endDay = endOfDay(end);
+    const start = startOfDay(new Date(end));
+    start.setDate(start.getDate() - 6);
+    return { start, end: endDay };
+  }
   const dayBefore = new Date(cellDate);
   dayBefore.setDate(dayBefore.getDate() - 1);
   const end = endOfDay(dayBefore);
@@ -105,7 +120,8 @@ export default function CalendarPage() {
   }, []);
 
   const fetchSessions = useCallback(async (id: string, year: number, month: number) => {
-    const from = new Date(year, month, -5);
+    // Fetch from start of previous month to cover monthly pay period display
+    const from = new Date(year, month - 1, 1);
     const to = new Date(year, month + 1, 0, 23, 59, 59);
     const res = await fetch(
       `/api/sessions?since=${from.toISOString()}&to=${to.toISOString()}`,
@@ -167,14 +183,13 @@ export default function CalendarPage() {
     [jobs]
   );
 
-  // Precompute which days are in a weekly pay period (for background highlight)
   const payPeriodDaySet = useMemo(() => {
     const set = new Set<string>();
     for (const day of calendarDays) {
       const cellDow = day.getDay();
       for (const job of weeklyJobs) {
         if (job.payDay === cellDow) {
-          const { start, end } = weeklyPeriodForCell(day);
+          const { start, end } = weeklyPeriodForCell(day, job.payWeekStart);
           let cur = new Date(start);
           while (cur <= end) {
             set.add(localDateStr(cur));
@@ -191,14 +206,16 @@ export default function CalendarPage() {
     const matching = weeklyJobs.filter((j) => j.payDay === cellDow);
     if (matching.length === 0) return null;
 
-    const { start, end } = weeklyPeriodForCell(cellDate);
-
-    const total = sessions
-      .filter((s) => {
-        const t = new Date(s.clockIn).getTime();
-        return matching.some((j) => j.id === s.jobId) && t >= start.getTime() && t <= end.getTime();
-      })
-      .reduce((sum, s) => sum + (calcSessionGross(s) ?? 0), 0);
+    const total = matching.reduce((sum, job) => {
+      const { start, end } = weeklyPeriodForCell(cellDate, job.payWeekStart);
+      const jobTotal = sessions
+        .filter((s) => {
+          const t = new Date(s.clockIn).getTime();
+          return s.jobId === job.id && t >= start.getTime() && t <= end.getTime();
+        })
+        .reduce((s2, s) => s2 + (calcSessionGross(s) ?? 0), 0);
+      return sum + jobTotal;
+    }, 0);
 
     return total > 0 ? { total, jobCount: matching.length } : null;
   }
@@ -206,13 +223,14 @@ export default function CalendarPage() {
   function getMonthlyBadge(cellDate: Date): { total: number; jobCount: number } | null {
     const matching = monthlyJobs.filter((j) => j.payDay === cellDate.getDate() && cellDate.getMonth() === viewMonth);
     if (matching.length === 0) return null;
-    const monthStart = new Date(viewYear, viewMonth, 1, 0, 0, 0);
-    const monthEnd = endOfDay(cellDate);
+    // Show previous month's total
+    const prevMonthStart = new Date(viewYear, viewMonth - 1, 1, 0, 0, 0);
+    const prevMonthEnd = new Date(viewYear, viewMonth, 0, 23, 59, 59);
     const total = sessions
       .filter((s) => {
         if (!matching.some((j) => j.id === s.jobId)) return false;
         const t = new Date(s.clockIn).getTime();
-        return t >= monthStart.getTime() && t <= monthEnd.getTime();
+        return t >= prevMonthStart.getTime() && t <= prevMonthEnd.getTime();
       })
       .reduce((sum, s) => sum + (calcSessionGross(s) ?? 0), 0);
     return total > 0 ? { total, jobCount: matching.length } : null;
@@ -342,8 +360,9 @@ export default function CalendarPage() {
 
                 {/* Weekly payout badge */}
                 {weeklyBadge && (() => {
-                  const { start, end } = weeklyPeriodForCell(day);
                   const cellDow = day.getDay();
+                  const matchingJob = weeklyJobs.find((j) => j.payDay === cellDow);
+                  const { start, end } = weeklyPeriodForCell(day, matchingJob?.payWeekStart);
                   const matchingJobIds = weeklyJobs.filter((j) => j.payDay === cellDow).map((j) => j.id);
                   const label = `${start.toLocaleDateString("zh-TW")} – ${end.toLocaleDateString("zh-TW")}`;
                   const isActive = selection?.type === "period" && selection.periodStart === start.toISOString();
@@ -366,19 +385,21 @@ export default function CalendarPage() {
 
                 {/* Monthly payout badge */}
                 {monthlyBadge && (() => {
-                  const start = new Date(viewYear, viewMonth, 1).toISOString();
-                  const end = endOfDay(day).toISOString();
-                  const label = `${viewYear}年${viewMonth + 1}月`;
+                  const prevMonthStart = new Date(viewYear, viewMonth - 1, 1).toISOString();
+                  const prevMonthEnd = new Date(viewYear, viewMonth, 0, 23, 59, 59).toISOString();
+                  const prevMonth = viewMonth === 0 ? 12 : viewMonth;
+                  const prevYear = viewMonth === 0 ? viewYear - 1 : viewYear;
+                  const label = `${prevYear}年${prevMonth}月`;
                   const matchingJobIds = monthlyJobs.filter((j) => j.payDay === day.getDate() && day.getMonth() === viewMonth).map((j) => j.id);
-                  const isActive = selection?.type === "period" && selection.periodStart === start;
+                  const isActive = selection?.type === "period" && selection.periodStart === prevMonthStart;
                   return (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         setSelection((prev) =>
-                          prev?.type === "period" && prev.periodStart === start
+                          prev?.type === "period" && prev.periodStart === prevMonthStart
                             ? null
-                            : { type: "period", jobIds: matchingJobIds, periodStart: start, periodEnd: end, payDayLabel: label }
+                            : { type: "period", jobIds: matchingJobIds, periodStart: prevMonthStart, periodEnd: prevMonthEnd, payDayLabel: label }
                         );
                       }}
                       className={`mt-0.5 px-1.5 py-0.5 rounded-md bg-purple-500/20 border border-purple-500/40 text-[9px] text-purple-400 hover:bg-purple-500/30 transition-colors leading-tight w-full text-center ${isActive ? "ring-1 ring-purple-400/60" : ""}`}
@@ -493,7 +514,7 @@ export default function CalendarPage() {
                                     {gross !== null ? (
                                       <p className="text-sm font-semibold text-green-400">${gross.toFixed(2)}</p>
                                     ) : (
-                                      <p className="text-xs text-gray-500">佣金制</p>
+                                      <p className="text-xs text-gray-500">抽成制</p>
                                     )}
                                   </div>
                                 </div>

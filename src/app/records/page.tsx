@@ -14,6 +14,7 @@ type Job = {
   commissionRequired: boolean;
   payFrequency: string;
   payDay: number | null;
+  payWeekStart: number | null;
   taxEnabled: boolean;
   breakDuration: number | null;
   breakRate: number | null;
@@ -22,6 +23,9 @@ type Job = {
   publicHolidayRate: number;
   saturdayRate: number;
   sundayRate: number;
+  saturdayHourlyRate: number | null;
+  sundayHourlyRate: number | null;
+  publicHolidayHourlyRate: number | null;
   overtimeTiers: OvertimeTier[];
 };
 
@@ -53,6 +57,21 @@ function periodKeyForSession(session: WorkSession): string {
   const d = new Date(session.clockIn);
   const job = session.job;
   if (job.payFrequency === "weekly" && job.payDay != null) {
+    if (job.payWeekStart != null) {
+      const dow = d.getDay();
+      const daysFromStart = (dow - job.payWeekStart + 7) % 7;
+      const periodStart = new Date(d);
+      periodStart.setDate(d.getDate() - daysFromStart);
+      periodStart.setHours(0, 0, 0, 0);
+      const periodEnd = new Date(periodStart);
+      periodEnd.setDate(periodStart.getDate() + 6);
+      const periodEndDow = periodEnd.getDay();
+      let daysUntilPayday = (job.payDay - periodEndDow + 7) % 7 || 7;
+      const payday = new Date(periodEnd);
+      payday.setDate(periodEnd.getDate() + daysUntilPayday);
+      payday.setHours(0, 0, 0, 0);
+      return localDateStr(payday);
+    }
     const dow = d.getDay();
     const diff = job.payDay <= dow ? 7 - (dow - job.payDay) : job.payDay - dow;
     const payday = new Date(d);
@@ -66,11 +85,21 @@ function periodKeyForSession(session: WorkSession): string {
 function periodLabel(key: string, job: Job): string {
   if (job.payFrequency === "weekly" && job.payDay != null) {
     const payday = new Date(key);
+    const fmt = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`;
+    if (job.payWeekStart != null) {
+      const periodEndDow = (job.payWeekStart - 1 + 7) % 7;
+      const payDayDow = payday.getDay();
+      const daysFromPeriodEndToPayday = (payDayDow - periodEndDow + 7) % 7 || 7;
+      const periodEnd = new Date(payday);
+      periodEnd.setDate(payday.getDate() - daysFromPeriodEndToPayday);
+      const periodStart = new Date(periodEnd);
+      periodStart.setDate(periodEnd.getDate() - 6);
+      return `${fmt(periodStart)} – ${fmt(periodEnd)}`;
+    }
     const periodEnd = new Date(payday);
     periodEnd.setDate(payday.getDate() - 1);
     const periodStart = new Date(periodEnd);
     periodStart.setDate(periodEnd.getDate() - 6);
-    const fmt = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`;
     return `${fmt(periodStart)} – ${fmt(periodEnd)}`;
   }
   const [y, m] = key.split("-");
@@ -102,6 +131,7 @@ export default function RecordsPage() {
   const [addDate, setAddDate] = useState("");
   const [addStart, setAddStart] = useState("");
   const [addEnd, setAddEnd] = useState("");
+  const [addDailyRevenue, setAddDailyRevenue] = useState("");
   const [addSubmitting, setAddSubmitting] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -120,7 +150,11 @@ export default function RecordsPage() {
       fetch("/api/jobs", { headers: { "x-device-id": id } }),
     ]);
     if (sessRes.ok) setSessions(await sessRes.json());
-    if (jobRes.ok) setJobs(await jobRes.json());
+    if (jobRes.ok) {
+      const jobData: Job[] = await jobRes.json();
+      setJobs(jobData);
+      if (jobData.length === 1) setAddJobId(jobData[0].id);
+    }
   }, []);
 
   useEffect(() => {
@@ -183,24 +217,29 @@ export default function RecordsPage() {
     return `${d.getMonth() + 1}/${d.getDate()}`;
   }
 
+  const selectedAddJob = jobs.find((j) => j.id === addJobId);
+  const isAddCommission = selectedAddJob?.commissionPercentage != null;
+
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!deviceId || !addJobId || !addDate || !addStart || !addEnd) return;
     setAddSubmitting(true);
     const clockIn = new Date(`${addDate}T${addStart}`).toISOString();
     const clockOut = new Date(`${addDate}T${addEnd}`).toISOString();
+    const body: Record<string, unknown> = { jobId: addJobId, clockIn, clockOut };
+    if (isAddCommission && addDailyRevenue) body.dailyRevenue = parseFloat(addDailyRevenue);
     const res = await fetch("/api/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-device-id": deviceId },
-      body: JSON.stringify({ jobId: addJobId, clockIn, clockOut }),
+      body: JSON.stringify(body),
     });
     if (res.ok) {
       await fetchAll(deviceId);
       setShowAddForm(false);
-      setAddJobId("");
       setAddDate("");
       setAddStart("");
       setAddEnd("");
+      setAddDailyRevenue("");
     }
     setAddSubmitting(false);
   }
@@ -260,7 +299,7 @@ export default function RecordsPage() {
             onClick={() => setShowAddForm((v) => !v)}
             className="text-sm px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white transition-colors"
           >
-            + 新增
+            {showAddForm ? "取消" : "+ 新增"}
           </button>
         </div>
 
@@ -313,6 +352,30 @@ export default function RecordsPage() {
                 />
               </div>
             </div>
+            {isAddCommission && (
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">
+                  今日業績
+                  {selectedAddJob?.commissionRequired
+                    ? <span className="text-red-400 ml-1">（必填）</span>
+                    : <span className="text-gray-500 ml-1">（選填）</span>
+                  }
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                  <input
+                    type="number"
+                    value={addDailyRevenue}
+                    onChange={(e) => setAddDailyRevenue(e.target.value)}
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
+                    required={selectedAddJob?.commissionRequired}
+                    className="block w-full max-w-full min-w-0 bg-gray-700 rounded-xl pl-7 pr-3 py-2 text-sm text-white placeholder-gray-500"
+                  />
+                </div>
+              </div>
+            )}
             <div className="flex gap-2 pt-1">
               <button
                 type="button"
@@ -332,184 +395,188 @@ export default function RecordsPage() {
           </form>
         )}
 
-        {/* Filters */}
-        <div className="mb-4 space-y-2">
-          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-            <button
-              onClick={() => setFilterJobId("")}
-              className={`shrink-0 px-3 py-1.5 rounded-xl text-sm transition-colors ${
-                filterJobId === "" ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"
-              }`}
-            >
-              全部
-            </button>
-            {jobs.map((j) => (
-              <button
-                key={j.id}
-                onClick={() => setFilterJobId(j.id)}
-                className={`shrink-0 px-3 py-1.5 rounded-xl text-sm transition-colors ${
-                  filterJobId === j.id ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"
-                }`}
-              >
-                {j.name}
-              </button>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            {(["all", "week", "month"] as const).map((period) => (
-              <button
-                key={period}
-                onClick={() => setFilterPeriod(period)}
-                className={`flex-1 py-1.5 rounded-xl text-sm transition-colors ${
-                  filterPeriod === period ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"
-                }`}
-              >
-                {period === "all" ? "全部" : period === "week" ? "本週" : "本月"}
-              </button>
-            ))}
-          </div>
-        </div>
+        {!showAddForm && (
+          <>
+            {/* Filters */}
+            <div className="mb-4 space-y-2">
+              <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                <button
+                  onClick={() => setFilterJobId("")}
+                  className={`shrink-0 px-3 py-1.5 rounded-xl text-sm transition-colors ${
+                    filterJobId === "" ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"
+                  }`}
+                >
+                  全部
+                </button>
+                {jobs.map((j) => (
+                  <button
+                    key={j.id}
+                    onClick={() => setFilterJobId(j.id)}
+                    className={`shrink-0 px-3 py-1.5 rounded-xl text-sm transition-colors ${
+                      filterJobId === j.id ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    {j.name}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                {(["all", "week", "month"] as const).map((period) => (
+                  <button
+                    key={period}
+                    onClick={() => setFilterPeriod(period)}
+                    className={`flex-1 py-1.5 rounded-xl text-sm transition-colors ${
+                      filterPeriod === period ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    {period === "all" ? "全部" : period === "week" ? "本週" : "本月"}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-        {jobsWithSessions.length === 0 ? (
-          <div className="flex items-center justify-center py-20">
-            <p className="text-gray-500 text-sm">沒有符合的打卡紀錄</p>
-          </div>
-        ) : (
-          jobsWithSessions.map((job) => {
-            const periodMap = grouped.get(job.id)!;
-            const sortedPeriodKeys = Array.from(periodMap.keys()).sort((a, b) => {
-              const dateA = new Date(a.includes("-") && a.split("-").length === 3 ? a : `${a}-01`);
-              const dateB = new Date(b.includes("-") && b.split("-").length === 3 ? b : `${b}-01`);
-              return dateB.getTime() - dateA.getTime();
-            });
+            {jobsWithSessions.length === 0 ? (
+              <div className="flex items-center justify-center py-20">
+                <p className="text-gray-500 text-sm">沒有符合的打卡紀錄</p>
+              </div>
+            ) : (
+              jobsWithSessions.map((job) => {
+                const periodMap = grouped.get(job.id)!;
+                const sortedPeriodKeys = Array.from(periodMap.keys()).sort((a, b) => {
+                  const dateA = new Date(a.includes("-") && a.split("-").length === 3 ? a : `${a}-01`);
+                  const dateB = new Date(b.includes("-") && b.split("-").length === 3 ? b : `${b}-01`);
+                  return dateB.getTime() - dateA.getTime();
+                });
 
-            return (
-              <div key={job.id} className="bg-gray-800 rounded-2xl p-4 mb-4">
-                <h2 className="text-base font-semibold mb-3">{job.name}</h2>
+                return (
+                  <div key={job.id} className="bg-gray-800 rounded-2xl p-4 mb-4">
+                    <h2 className="text-base font-semibold mb-3">{job.name}</h2>
 
-                {sortedPeriodKeys.map((periodKey) => {
-                  const periodSessions = periodMap.get(periodKey)!.sort(
-                    (a, b) => new Date(b.clockIn).getTime() - new Date(a.clockIn).getTime()
-                  );
-                  const label = periodLabel(periodKey, job);
-                  const subLabel = periodSubLabel(periodKey, job);
-                  const periodGross = periodSessions.reduce((sum, s) => sum + (calcSessionGross(s) ?? 0), 0);
-                  const periodNet = periodSessions.reduce((sum, s) => sum + (calcSessionIncome(s, taxRate) ?? 0), 0);
-                  const hasTax = taxRate > 0 && periodSessions.some((s) => s.job.taxEnabled);
-                  const hasIncome = periodSessions.some((s) => calcSessionGross(s) !== null);
+                    {sortedPeriodKeys.map((periodKey) => {
+                      const periodSessions = periodMap.get(periodKey)!.sort(
+                        (a, b) => new Date(b.clockIn).getTime() - new Date(a.clockIn).getTime()
+                      );
+                      const label = periodLabel(periodKey, job);
+                      const subLabel = periodSubLabel(periodKey, job);
+                      const periodGross = periodSessions.reduce((sum, s) => sum + (calcSessionGross(s) ?? 0), 0);
+                      const periodNet = periodSessions.reduce((sum, s) => sum + (calcSessionIncome(s, taxRate) ?? 0), 0);
+                      const hasTax = taxRate > 0 && periodSessions.some((s) => s.job.taxEnabled);
+                      const hasIncome = periodSessions.some((s) => calcSessionGross(s) !== null);
 
-                  return (
-                    <div key={periodKey} className="mb-4 last:mb-0">
-                      <div className="flex items-center justify-between mb-2">
-                        <div>
-                          <span className="text-sm text-gray-300 font-medium">{label}</span>
-                          {subLabel && (
-                            <span className="text-xs text-gray-500 ml-2">{subLabel}</span>
-                          )}
-                        </div>
-                        {hasIncome && (
-                          <div className="text-right">
-                            {hasTax ? (
-                              <>
-                                <div className="text-xs text-gray-500">稅前 ${periodGross.toFixed(2)}</div>
-                                <div className="text-sm font-semibold text-green-400">${periodNet.toFixed(2)}</div>
-                              </>
-                            ) : (
-                              <span className="text-sm font-semibold text-green-400">${periodGross.toFixed(2)}</span>
+                      return (
+                        <div key={periodKey} className="mb-4 last:mb-0">
+                          <div className="flex items-center justify-between mb-2">
+                            <div>
+                              <span className="text-sm text-gray-300 font-medium">{label}</span>
+                              {subLabel && (
+                                <span className="text-xs text-gray-500 ml-2">{subLabel}</span>
+                              )}
+                            </div>
+                            {hasIncome && (
+                              <div className="text-right">
+                                {hasTax ? (
+                                  <>
+                                    <div className="text-xs text-gray-500">稅前 ${periodGross.toFixed(2)}</div>
+                                    <div className="text-sm font-semibold text-green-400">${periodNet.toFixed(2)}</div>
+                                  </>
+                                ) : (
+                                  <span className="text-sm font-semibold text-green-400">${periodGross.toFixed(2)}</span>
+                                )}
+                              </div>
                             )}
                           </div>
-                        )}
-                      </div>
 
-                      <div className="space-y-2">
-                        {periodSessions.map((s) => {
-                          const gross = calcSessionGross(s);
+                          <div className="space-y-2">
+                            {periodSessions.map((s) => {
+                              const gross = calcSessionGross(s);
 
-                          if (editingId === s.id) {
-                            return (
-                              <form
-                                key={s.id}
-                                onSubmit={handleEdit}
-                                className="bg-gray-700 rounded-xl p-3 space-y-2 overflow-hidden"
-                              >
-                                <div>
-                                  <label className="text-xs text-gray-400 block mb-1">上班時間</label>
-                                  <input
-                                    type="datetime-local"
-                                    value={editClockIn}
-                                    onChange={(e) => setEditClockIn(e.target.value)}
-                                    required
-                                    className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-1.5 text-sm text-white"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="text-xs text-gray-400 block mb-1">下班時間</label>
-                                  <input
-                                    type="datetime-local"
-                                    value={editClockOut}
-                                    onChange={(e) => setEditClockOut(e.target.value)}
-                                    required
-                                    className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-1.5 text-sm text-white"
-                                  />
-                                </div>
-                                <div className="flex gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => setEditingId(null)}
-                                    className="flex-1 py-2 rounded-lg bg-gray-600 hover:bg-gray-500 text-xs font-medium transition-colors"
+                              if (editingId === s.id) {
+                                return (
+                                  <form
+                                    key={s.id}
+                                    onSubmit={handleEdit}
+                                    className="bg-gray-700 rounded-xl p-3 space-y-2 overflow-hidden"
                                   >
-                                    取消
-                                  </button>
-                                  <button
-                                    type="submit"
-                                    disabled={editSubmitting}
-                                    className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-medium transition-colors disabled:opacity-50"
-                                  >
-                                    {editSubmitting ? "儲存中..." : "儲存"}
-                                  </button>
-                                </div>
-                              </form>
-                            );
-                          }
+                                    <div>
+                                      <label className="text-xs text-gray-400 block mb-1">上班時間</label>
+                                      <input
+                                        type="datetime-local"
+                                        value={editClockIn}
+                                        onChange={(e) => setEditClockIn(e.target.value)}
+                                        required
+                                        className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-1.5 text-sm text-white"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="text-xs text-gray-400 block mb-1">下班時間</label>
+                                      <input
+                                        type="datetime-local"
+                                        value={editClockOut}
+                                        onChange={(e) => setEditClockOut(e.target.value)}
+                                        required
+                                        className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-1.5 text-sm text-white"
+                                      />
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => setEditingId(null)}
+                                        className="flex-1 py-2 rounded-lg bg-gray-600 hover:bg-gray-500 text-xs font-medium transition-colors"
+                                      >
+                                        取消
+                                      </button>
+                                      <button
+                                        type="submit"
+                                        disabled={editSubmitting}
+                                        className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-medium transition-colors disabled:opacity-50"
+                                      >
+                                        {editSubmitting ? "儲存中..." : "儲存"}
+                                      </button>
+                                    </div>
+                                  </form>
+                                );
+                              }
 
-                          return (
-                            <div key={s.id} className="bg-gray-900 rounded-xl px-3 py-2.5">
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="text-sm text-white">
-                                  {fmtDate(s.clockIn)} {fmtTime(s.clockIn)} – {s.clockOut ? fmtTime(s.clockOut) : "進行中"}
-                                </span>
-                                <div className="text-right">
-                                  {gross !== null ? (
-                                    <span className="text-sm font-semibold text-green-400">${gross.toFixed(2)}</span>
-                                  ) : (
-                                    <span className="text-xs text-gray-500">佣金制</span>
-                                  )}
+                              return (
+                                <div key={s.id} className="bg-gray-900 rounded-xl px-3 py-2.5">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="text-sm text-white">
+                                      {fmtDate(s.clockIn)} {fmtTime(s.clockIn)} – {s.clockOut ? fmtTime(s.clockOut) : "進行中"}
+                                    </span>
+                                    <div className="text-right">
+                                      {gross !== null ? (
+                                        <span className="text-sm font-semibold text-green-400">${gross.toFixed(2)}</span>
+                                      ) : (
+                                        <span className="text-xs text-gray-500">抽成制</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <button
+                                      onClick={() => startEdit(s)}
+                                      className="text-sm text-blue-400 hover:text-blue-300 transition-colors px-3 py-1.5 -ml-2 rounded-lg hover:bg-blue-400/10"
+                                    >
+                                      編輯
+                                    </button>
+                                    <button
+                                      onClick={() => handleDelete(s.id)}
+                                      className="text-sm text-red-400 hover:text-red-300 transition-colors px-3 py-1.5 -mr-2 rounded-lg hover:bg-red-400/10"
+                                    >
+                                      刪除
+                                    </button>
+                                  </div>
                                 </div>
-                              </div>
-                              <div className="flex items-center justify-between">
-                                <button
-                                  onClick={() => startEdit(s)}
-                                  className="text-sm text-blue-400 hover:text-blue-300 transition-colors px-3 py-1.5 -ml-2 rounded-lg hover:bg-blue-400/10"
-                                >
-                                  編輯
-                                </button>
-                                <button
-                                  onClick={() => handleDelete(s.id)}
-                                  className="text-sm text-red-400 hover:text-red-300 transition-colors px-3 py-1.5 -mr-2 rounded-lg hover:bg-red-400/10"
-                                >
-                                  刪除
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })
+            )}
+          </>
         )}
       </div>
     </main>

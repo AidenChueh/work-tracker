@@ -16,7 +16,7 @@ export function OnboardingForm({ onComplete }: Props) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center px-6">
+    <div className="h-full bg-gray-950 text-white flex flex-col items-center justify-center px-6">
       <h1 className="text-3xl font-bold mb-2">Work Tracker</h1>
       <p className="text-gray-400 mb-10">輕鬆記錄工作時間與收入</p>
 

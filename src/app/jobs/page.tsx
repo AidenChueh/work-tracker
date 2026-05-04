@@ -13,6 +13,7 @@ type Job = {
   commissionRequired: boolean;
   payFrequency: string;
   payDay: number | null;
+  payWeekStart: number | null;
   taxEnabled: boolean;
   overtimeTiers: { id: string; afterHours: number; rate: number }[];
   breakDuration: number | null;
@@ -22,6 +23,9 @@ type Job = {
   publicHolidayRate: number;
   saturdayRate: number;
   sundayRate: number;
+  saturdayHourlyRate: number | null;
+  sundayHourlyRate: number | null;
+  publicHolidayHourlyRate: number | null;
   createdAt: string;
 };
 
@@ -30,7 +34,6 @@ const FREQ_LABELS: Record<string, string> = {
   weekly: "每週",
   bi_weekly: "每兩週",
   monthly: "每月",
-  custom: "自訂",
 };
 
 export default function JobsPage() {
@@ -65,14 +68,14 @@ export default function JobsPage() {
 
   if (!loaded || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-950">
+      <div className="flex items-center justify-center h-full bg-gray-950">
         <div className="text-white">載入中...</div>
       </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white">
+    <main className="bg-gray-950 text-white">
       <div className="max-w-md mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-xl font-semibold">工作管理</h1>
@@ -84,6 +87,7 @@ export default function JobsPage() {
                 value={taxRateInput}
                 onChange={(e) => setTaxRateInput(e.target.value)}
                 onBlur={handleTaxRateSave}
+                onFocus={(e) => e.target.select()}
                 min="0"
                 max="100"
                 step="0.1"
@@ -127,7 +131,7 @@ export default function JobsPage() {
             const payInfo = job.hourlyRate != null
               ? `$${job.hourlyRate}/hr`
               : job.commissionPercentage != null
-              ? `佣金 ${(job.commissionPercentage * 100).toFixed(0)}%`
+              ? `抽成 ${(job.commissionPercentage * 100).toFixed(0)}%`
               : "未設定";
             const payDayLabel = job.payFrequency === "weekly" && job.payDay != null
               ? `星期${WEEKDAYS[job.payDay]}`

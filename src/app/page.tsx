@@ -15,6 +15,7 @@ type Job = {
   commissionRequired: boolean;
   payFrequency: string;
   payDay: number | null;
+  payWeekStart: number | null;
   taxEnabled: boolean;
   breakDuration: number | null;
   breakRate: number | null;
@@ -23,6 +24,9 @@ type Job = {
   publicHolidayRate: number;
   saturdayRate: number;
   sundayRate: number;
+  saturdayHourlyRate: number | null;
+  sundayHourlyRate: number | null;
+  publicHolidayHourlyRate: number | null;
   overtimeTiers: OvertimeTier[];
   createdAt: string;
 };

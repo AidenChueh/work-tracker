@@ -28,12 +28,16 @@ model Job {
   taxEnabled           Boolean       @default(false)
   breakDuration        Int?
   breakRate            Float?
-  penaltyRatesEnabled  Boolean       @default(false)
-  penaltyBaseRate      Float?
-  publicHolidayRate    Float         @default(2.5)
-  saturdayRate         Float         @default(1.5)
-  sundayRate           Float         @default(2.0)
-  isActive             Boolean       @default(true)
+  penaltyRatesEnabled      Boolean       @default(false)
+  penaltyBaseRate          Float?
+  publicHolidayRate        Float         @default(2.5)
+  saturdayRate             Float         @default(1.5)
+  sundayRate               Float         @default(2.0)
+  saturdayHourlyRate       Float?
+  sundayHourlyRate         Float?
+  publicHolidayHourlyRate  Float?
+  payWeekStart             Int?
+  isActive                 Boolean       @default(true)
   createdAt            DateTime      @default(now())
   sessions             WorkSession[]
   overtimeTiers        OvertimeTier[]

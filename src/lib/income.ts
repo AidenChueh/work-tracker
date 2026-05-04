@@ -12,6 +12,9 @@ export type JobBase = {
   publicHolidayRate: number;
   saturdayRate: number;
   sundayRate: number;
+  saturdayHourlyRate: number | null;
+  sundayHourlyRate: number | null;
+  publicHolidayHourlyRate: number | null;
 };
 
 export type BreakBase = {
@@ -29,19 +32,23 @@ export type SessionBase = {
   dailyRevenue: number | null;
 };
 
-function getPenaltyMultiplier(session: SessionBase): number {
-  if (!session.job.penaltyRatesEnabled) return 1;
-  if (session.isPublicHoliday) return session.job.publicHolidayRate;
+function getPenaltyInfo(session: SessionBase): { multiplier: number; customRate: number | null } {
+  if (!session.job.penaltyRatesEnabled) return { multiplier: 1, customRate: null };
+  if (session.isPublicHoliday) {
+    return {
+      multiplier: session.job.publicHolidayRate,
+      customRate: session.job.publicHolidayHourlyRate ?? null,
+    };
+  }
   const dow = new Date(session.clockIn).getDay();
-  if (dow === 0) return session.job.sundayRate;
-  if (dow === 6) return session.job.saturdayRate;
-  return 1;
+  if (dow === 0) return { multiplier: session.job.sundayRate, customRate: session.job.sundayHourlyRate ?? null };
+  if (dow === 6) return { multiplier: session.job.saturdayRate, customRate: session.job.saturdayHourlyRate ?? null };
+  return { multiplier: 1, customRate: null };
 }
 
 export function calcSessionGross(session: SessionBase): number | null {
   if (!session.clockOut) return null;
 
-  // Commission-based income
   if (session.job.commissionPercentage != null) {
     if (session.dailyRevenue == null) return null;
     return session.dailyRevenue * session.job.commissionPercentage;
@@ -50,7 +57,7 @@ export function calcSessionGross(session: SessionBase): number | null {
   if (session.job.hourlyRate == null) return null;
 
   const { hourlyRate, breakDuration, breakRate, overtimeTiers, penaltyBaseRate } = session.job;
-  const penaltyMultiplier = getPenaltyMultiplier(session);
+  const { multiplier, customRate } = getPenaltyInfo(session);
 
   const totalMs = new Date(session.clockOut).getTime() - new Date(session.clockIn).getTime();
   const manualUnpaidMs = session.breaks
@@ -61,8 +68,17 @@ export function calcSessionGross(session: SessionBase): number | null {
 
   const sorted = [...overtimeTiers].sort((a, b) => a.afterHours - b.afterHours);
   const breakpoints = [0, ...sorted.map((t) => t.afterHours)];
-  // For penalty period: use penaltyBaseRate ?? hourlyRate as the base tier rate
-  const effectiveBase = penaltyMultiplier > 1 ? (penaltyBaseRate ?? hourlyRate) : hourlyRate;
+
+  let effectiveBase: number;
+  let effectiveMultiplier: number;
+  if (customRate !== null) {
+    effectiveBase = customRate;
+    effectiveMultiplier = 1;
+  } else {
+    effectiveBase = multiplier > 1 ? (penaltyBaseRate ?? hourlyRate) : hourlyRate;
+    effectiveMultiplier = multiplier;
+  }
+
   const ratesPerSegment = [effectiveBase, ...sorted.map((t) => t.rate)];
 
   let workGross = 0;
@@ -70,7 +86,7 @@ export function calcSessionGross(session: SessionBase): number | null {
     const from = breakpoints[i];
     if (workingHours <= from) break;
     const to = i + 1 < breakpoints.length ? breakpoints[i + 1] : workingHours;
-    workGross += (Math.min(workingHours, to) - from) * ratesPerSegment[i] * penaltyMultiplier;
+    workGross += (Math.min(workingHours, to) - from) * ratesPerSegment[i] * effectiveMultiplier;
   }
 
   const breakGross = breakRate != null ? (jobBreakMs / 3600000) * breakRate : 0;

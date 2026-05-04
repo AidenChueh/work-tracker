@@ -12,6 +12,7 @@ type Job = {
   commissionRequired: boolean;
   payFrequency: string;
   payDay: number | null;
+  payWeekStart: number | null;
   taxEnabled: boolean;
   overtimeTiers: { id: string; afterHours: number; rate: number }[];
   breakDuration: number | null;
@@ -21,6 +22,9 @@ type Job = {
   publicHolidayRate: number;
   saturdayRate: number;
   sundayRate: number;
+  saturdayHourlyRate: number | null;
+  sundayHourlyRate: number | null;
+  publicHolidayHourlyRate: number | null;
   createdAt: string;
 };
 
@@ -58,6 +62,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
   const [commissionRequired, setCommissionRequired] = useState(job.commissionRequired);
   const [payFrequency, setPayFrequency] = useState(job.payFrequency);
   const [payDay, setPayDay] = useState(job.payDay?.toString() ?? "");
+  const [payWeekStart, setPayWeekStart] = useState(job.payWeekStart?.toString() ?? "");
   const [taxEnabled, setTaxEnabled] = useState(job.taxEnabled);
   const [overtimeTiers, setOvertimeTiers] = useState<OvertimeTier[]>(
     job.overtimeTiers.map((t) => ({ afterHours: t.afterHours.toString(), rate: t.rate.toString() }))
@@ -70,6 +75,9 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
   const [publicHolidayRate, setPublicHolidayRate] = useState(job.publicHolidayRate.toString());
   const [saturdayRate, setSaturdayRate] = useState(job.saturdayRate.toString());
   const [sundayRate, setSundayRate] = useState(job.sundayRate.toString());
+  const [saturdayHourlyRate, setSaturdayHourlyRate] = useState(job.saturdayHourlyRate?.toString() ?? "");
+  const [sundayHourlyRate, setSundayHourlyRate] = useState(job.sundayHourlyRate?.toString() ?? "");
+  const [publicHolidayHourlyRate, setPublicHolidayHourlyRate] = useState(job.publicHolidayHourlyRate?.toString() ?? "");
   const [submitting, setSubmitting] = useState(false);
 
   const addTier = () => setOvertimeTiers((prev) => [...prev, { afterHours: "", rate: "" }]);
@@ -93,6 +101,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
         commissionRequired: payType === "commission" ? commissionRequired : false,
         payFrequency,
         payDay: payDay !== "" ? parseInt(payDay) : null,
+        payWeekStart: payWeekStart !== "" ? parseInt(payWeekStart) : null,
         taxEnabled,
         overtimeTiers: overtimeTiers
           .filter((t) => t.afterHours !== "" && t.rate !== "")
@@ -104,6 +113,9 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
         publicHolidayRate: parseFloat(publicHolidayRate) || 2.5,
         saturdayRate: parseFloat(saturdayRate) || 1.5,
         sundayRate: parseFloat(sundayRate) || 2.0,
+        saturdayHourlyRate: saturdayHourlyRate ? parseFloat(saturdayHourlyRate) : null,
+        sundayHourlyRate: sundayHourlyRate ? parseFloat(sundayHourlyRate) : null,
+        publicHolidayHourlyRate: publicHolidayHourlyRate ? parseFloat(publicHolidayHourlyRate) : null,
       }),
     });
 
@@ -119,6 +131,8 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
     });
     if (res.ok) onDeactivated(job.id);
   };
+
+  const showWeekdaySelector = payFrequency === "weekly" || payFrequency === "bi_weekly";
 
   return (
     <form onSubmit={handleSubmit} className="bg-gray-700 rounded-2xl p-4 mt-2 space-y-3">
@@ -145,7 +159,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
                 payType === type ? "bg-blue-600 text-white" : "bg-gray-600 text-gray-300"
               }`}
             >
-              {type === "hourly" ? "時薪" : "佣金"}
+              {type === "hourly" ? "時薪" : "抽成"}
             </button>
           ))}
         </div>
@@ -169,7 +183,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
       {payType === "commission" && (
         <>
           <div>
-            <label className="block text-xs text-gray-400 mb-1">佣金比例（%）</label>
+            <label className="block text-xs text-gray-400 mb-1">抽成比例（%）</label>
             <input
               type="number"
               value={commissionPercentage}
@@ -192,17 +206,16 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
         <label className="block text-xs text-gray-400 mb-1">發薪頻率</label>
         <select
           value={payFrequency}
-          onChange={(e) => { setPayFrequency(e.target.value); setPayDay(""); }}
+          onChange={(e) => { setPayFrequency(e.target.value); setPayDay(""); setPayWeekStart(""); }}
           className="w-full bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="weekly">每週</option>
           <option value="bi_weekly">每兩週</option>
           <option value="monthly">每月</option>
-          <option value="custom">自訂</option>
         </select>
       </div>
 
-      {payFrequency === "weekly" && (
+      {showWeekdaySelector && (
         <div>
           <label className="block text-xs text-gray-400 mb-1">發薪日（星期幾）</label>
           <select
@@ -215,6 +228,23 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
               <option key={i} value={i}>星期{day}</option>
             ))}
           </select>
+        </div>
+      )}
+
+      {showWeekdaySelector && (
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">計薪週起始日（選填）</label>
+          <select
+            value={payWeekStart}
+            onChange={(e) => setPayWeekStart(e.target.value)}
+            className="w-full bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">預設（依發薪日往前推算）</option>
+            {WEEKDAYS.map((day, i) => (
+              <option key={i} value={i}>星期{day}</option>
+            ))}
+          </select>
+          <p className="text-[10px] text-gray-500 mt-0.5">例如：星期四 → 計薪週為四到三</p>
         </div>
       )}
 
@@ -319,6 +349,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
               </div>
             </div>
           )}
+
           {/* Penalty Rates */}
           <div className="border-t border-gray-600/50 pt-3">
             <div className="flex items-center justify-between mb-2">
@@ -329,7 +360,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
               <Toggle checked={penaltyRatesEnabled} onChange={() => setPenaltyRatesEnabled((v) => !v)} />
             </div>
             {penaltyRatesEnabled && (
-              <div className="space-y-2 mt-2 bg-gray-600/40 rounded-lg p-2.5">
+              <div className="space-y-3 mt-2 bg-gray-600/40 rounded-lg p-2.5">
                 <div>
                   <label className="block text-[10px] text-gray-400 mb-1">自訂基本時薪（$，選填）</label>
                   <input
@@ -342,23 +373,37 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
                     className="w-full bg-gray-600 rounded-lg px-2 py-1.5 text-white text-xs placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
+                <p className="text-[10px] text-gray-500">倍率與固定時薪二擇一，設定固定時薪優先使用</p>
                 {[
-                  { label: "國定假日", value: publicHolidayRate, set: setPublicHolidayRate },
-                  { label: "週六", value: saturdayRate, set: setSaturdayRate },
-                  { label: "週日", value: sundayRate, set: setSundayRate },
-                ].map(({ label, value, set }) => (
-                  <div key={label} className="flex items-center gap-2">
-                    <span className="text-xs text-gray-300 w-16 shrink-0">{label}</span>
-                    <div className="flex-1 flex items-center gap-1">
-                      <input
-                        type="number"
-                        value={value}
-                        onChange={(e) => set(e.target.value)}
-                        min="1"
-                        step="0.1"
-                        className="w-full bg-gray-600 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                      <span className="text-xs text-gray-500 shrink-0">倍</span>
+                  { label: "週六", rateVal: saturdayRate, rateSet: setSaturdayRate, hourlyVal: saturdayHourlyRate, hourlySet: setSaturdayHourlyRate },
+                  { label: "週日", rateVal: sundayRate, rateSet: setSundayRate, hourlyVal: sundayHourlyRate, hourlySet: setSundayHourlyRate },
+                  { label: "國定假日", rateVal: publicHolidayRate, rateSet: setPublicHolidayRate, hourlyVal: publicHolidayHourlyRate, hourlySet: setPublicHolidayHourlyRate },
+                ].map(({ label, rateVal, rateSet, hourlyVal, hourlySet }) => (
+                  <div key={label}>
+                    <span className="text-xs text-gray-300 block mb-1">{label}</span>
+                    <div className="flex gap-2">
+                      <div className="flex-1 flex items-center gap-1">
+                        <input
+                          type="number"
+                          value={rateVal}
+                          onChange={(e) => rateSet(e.target.value)}
+                          min="1"
+                          step="0.1"
+                          className="w-full bg-gray-600 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <span className="text-xs text-gray-500 shrink-0">× 倍</span>
+                      </div>
+                      <div className="flex-1 flex items-center gap-1">
+                        <input
+                          type="number"
+                          value={hourlyVal}
+                          onChange={(e) => hourlySet(e.target.value)}
+                          placeholder="固定$/hr"
+                          min="0"
+                          step="0.01"
+                          className="w-full bg-gray-600 rounded-lg px-2 py-1.5 text-white text-xs placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
                     </div>
                   </div>
                 ))}
