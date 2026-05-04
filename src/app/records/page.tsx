@@ -11,11 +11,16 @@ type Job = {
   name: string;
   hourlyRate: number | null;
   commissionPercentage: number | null;
+  commissionRequired: boolean;
   payFrequency: string;
   payDay: number | null;
   taxEnabled: boolean;
   breakDuration: number | null;
   breakRate: number | null;
+  penaltyRatesEnabled: boolean;
+  publicHolidayRate: number;
+  saturdayRate: number;
+  sundayRate: number;
   overtimeTiers: OvertimeTier[];
 };
 
@@ -27,6 +32,8 @@ type WorkSession = {
   job: Job;
   clockIn: string;
   clockOut: string | null;
+  isPublicHoliday: boolean;
+  dailyRevenue: number | null;
   breaks: Break[];
 };
 
@@ -44,7 +51,6 @@ function toDatetimeLocal(isoString: string): string {
 function periodKeyForSession(session: WorkSession): string {
   const d = new Date(session.clockIn);
   const job = session.job;
-
   if (job.payFrequency === "weekly" && job.payDay != null) {
     const dow = d.getDay();
     const diff = job.payDay <= dow ? 7 - (dow - job.payDay) : job.payDay - dow;
@@ -53,7 +59,6 @@ function periodKeyForSession(session: WorkSession): string {
     payday.setHours(0, 0, 0, 0);
     return localDateStr(payday);
   }
-
   return `${d.getFullYear()}-${d.getMonth() + 1}`;
 }
 
@@ -79,12 +84,17 @@ function periodSubLabel(key: string, job: Job): string | null {
   return null;
 }
 
+type FilterPeriod = "all" | "week" | "month";
+
 export default function RecordsPage() {
   const { deviceId, loaded } = useDevice();
   const [sessions, setSessions] = useState<WorkSession[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [taxRate, setTaxRate] = useState(0);
+
+  const [filterJobId, setFilterJobId] = useState<string>("");
+  const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>("all");
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [addJobId, setAddJobId] = useState("");
@@ -123,19 +133,44 @@ export default function RecordsPage() {
     [sessions]
   );
 
+  const filteredSessions = useMemo(() => {
+    let result = completedSessions;
+    if (filterJobId) {
+      result = result.filter((s) => s.jobId === filterJobId);
+    }
+    if (filterPeriod !== "all") {
+      const now = new Date();
+      let start: Date, end: Date;
+      if (filterPeriod === "week") {
+        const dow = now.getDay();
+        start = new Date(now);
+        start.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1));
+        start.setHours(0, 0, 0, 0);
+        end = new Date(start);
+        end.setDate(start.getDate() + 7);
+      } else {
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+        end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+      }
+      result = result.filter((s) => {
+        const t = new Date(s.clockIn).getTime();
+        return t >= start.getTime() && t <= end.getTime();
+      });
+    }
+    return result;
+  }, [completedSessions, filterJobId, filterPeriod]);
+
   const grouped = useMemo(() => {
     const byJob = new Map<string, Map<string, WorkSession[]>>();
-
-    for (const s of completedSessions) {
+    for (const s of filteredSessions) {
       if (!byJob.has(s.jobId)) byJob.set(s.jobId, new Map());
       const key = periodKeyForSession(s);
       const periodMap = byJob.get(s.jobId)!;
       if (!periodMap.has(key)) periodMap.set(key, []);
       periodMap.get(key)!.push(s);
     }
-
     return byJob;
-  }, [completedSessions]);
+  }, [filteredSessions]);
 
   function fmtTime(iso: string): string {
     const d = new Date(iso);
@@ -206,7 +241,7 @@ export default function RecordsPage() {
 
   if (!loaded || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-950">
+      <div className="flex items-center justify-center h-64 bg-gray-950">
         <div className="text-white">載入中...</div>
       </div>
     );
@@ -215,7 +250,7 @@ export default function RecordsPage() {
   const jobsWithSessions = jobs.filter((j) => grouped.has(j.id));
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white">
+    <main className="bg-gray-950 text-white">
       <div className="max-w-md mx-auto px-4 py-6">
 
         <div className="flex items-center justify-between mb-4">
@@ -229,7 +264,7 @@ export default function RecordsPage() {
         </div>
 
         {showAddForm && (
-          <form onSubmit={handleAdd} className="bg-gray-800 rounded-2xl p-4 mb-4 space-y-3">
+          <form onSubmit={handleAdd} className="bg-gray-800 rounded-2xl p-4 mb-4 space-y-3 overflow-x-hidden">
             <p className="text-sm font-medium text-gray-300">新增打卡紀錄</p>
             <div>
               <label className="text-xs text-gray-400 block mb-1">工作</label>
@@ -237,7 +272,7 @@ export default function RecordsPage() {
                 value={addJobId}
                 onChange={(e) => setAddJobId(e.target.value)}
                 required
-                className="w-full bg-gray-700 rounded-xl px-3 py-2 text-sm text-white"
+                className="w-full bg-gray-700 rounded-xl px-3 py-2 text-sm text-white min-w-0"
               >
                 <option value="">選擇工作...</option>
                 {jobs.map((j) => (
@@ -252,39 +287,32 @@ export default function RecordsPage() {
                 value={addDate}
                 onChange={(e) => setAddDate(e.target.value)}
                 required
-                className="w-full bg-gray-700 rounded-xl px-3 py-2 text-sm text-white"
+                className="w-full min-w-0 bg-gray-700 rounded-xl px-3 py-2 text-sm text-white"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div>
+              <div className="min-w-0">
                 <label className="text-xs text-gray-400 block mb-1">上班時間</label>
                 <input
                   type="time"
                   value={addStart}
                   onChange={(e) => setAddStart(e.target.value)}
                   required
-                  className="w-full bg-gray-700 rounded-xl px-3 py-2 text-sm text-white"
+                  className="w-full min-w-0 bg-gray-700 rounded-xl px-3 py-2 text-sm text-white"
                 />
               </div>
-              <div>
+              <div className="min-w-0">
                 <label className="text-xs text-gray-400 block mb-1">下班時間</label>
                 <input
                   type="time"
                   value={addEnd}
                   onChange={(e) => setAddEnd(e.target.value)}
                   required
-                  className="w-full bg-gray-700 rounded-xl px-3 py-2 text-sm text-white"
+                  className="w-full min-w-0 bg-gray-700 rounded-xl px-3 py-2 text-sm text-white"
                 />
               </div>
             </div>
             <div className="flex gap-2 pt-1">
-              <button
-                type="submit"
-                disabled={addSubmitting}
-                className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-sm font-medium transition-colors disabled:opacity-50"
-              >
-                {addSubmitting ? "儲存中..." : "儲存"}
-              </button>
               <button
                 type="button"
                 onClick={() => setShowAddForm(false)}
@@ -292,13 +320,58 @@ export default function RecordsPage() {
               >
                 取消
               </button>
+              <button
+                type="submit"
+                disabled={addSubmitting}
+                className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                {addSubmitting ? "儲存中..." : "儲存"}
+              </button>
             </div>
           </form>
         )}
 
+        {/* Filters */}
+        <div className="mb-4 space-y-2">
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+            <button
+              onClick={() => setFilterJobId("")}
+              className={`shrink-0 px-3 py-1.5 rounded-xl text-sm transition-colors ${
+                filterJobId === "" ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"
+              }`}
+            >
+              全部
+            </button>
+            {jobs.map((j) => (
+              <button
+                key={j.id}
+                onClick={() => setFilterJobId(j.id)}
+                className={`shrink-0 px-3 py-1.5 rounded-xl text-sm transition-colors ${
+                  filterJobId === j.id ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"
+                }`}
+              >
+                {j.name}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            {(["all", "week", "month"] as const).map((period) => (
+              <button
+                key={period}
+                onClick={() => setFilterPeriod(period)}
+                className={`flex-1 py-1.5 rounded-xl text-sm transition-colors ${
+                  filterPeriod === period ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"
+                }`}
+              >
+                {period === "all" ? "全部" : period === "week" ? "本週" : "本月"}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {jobsWithSessions.length === 0 ? (
           <div className="flex items-center justify-center py-20">
-            <p className="text-gray-500 text-sm">還沒有打卡紀錄</p>
+            <p className="text-gray-500 text-sm">沒有符合的打卡紀錄</p>
           </div>
         ) : (
           jobsWithSessions.map((job) => {
@@ -350,8 +423,6 @@ export default function RecordsPage() {
                       <div className="space-y-2">
                         {periodSessions.map((s) => {
                           const gross = calcSessionGross(s);
-                          const net = calcSessionIncome(s, taxRate);
-                          const sessionHasTax = taxRate > 0 && s.job.taxEnabled && gross !== null;
 
                           if (editingId === s.id) {
                             return (
@@ -382,18 +453,18 @@ export default function RecordsPage() {
                                 </div>
                                 <div className="flex gap-2">
                                   <button
-                                    type="submit"
-                                    disabled={editSubmitting}
-                                    className="flex-1 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-medium transition-colors disabled:opacity-50"
-                                  >
-                                    {editSubmitting ? "儲存中..." : "儲存"}
-                                  </button>
-                                  <button
                                     type="button"
                                     onClick={() => setEditingId(null)}
-                                    className="flex-1 py-1.5 rounded-lg bg-gray-600 hover:bg-gray-500 text-xs font-medium transition-colors"
+                                    className="flex-1 py-2 rounded-lg bg-gray-600 hover:bg-gray-500 text-xs font-medium transition-colors"
                                   >
                                     取消
+                                  </button>
+                                  <button
+                                    type="submit"
+                                    disabled={editSubmitting}
+                                    className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-medium transition-colors disabled:opacity-50"
+                                  >
+                                    {editSubmitting ? "儲存中..." : "儲存"}
                                   </button>
                                 </div>
                               </form>
@@ -402,33 +473,28 @@ export default function RecordsPage() {
 
                           return (
                             <div key={s.id} className="bg-gray-900 rounded-xl px-3 py-2.5">
-                              <div className="flex items-center justify-between mb-1.5">
+                              <div className="flex items-center justify-between mb-2">
                                 <span className="text-sm text-white">
                                   {fmtDate(s.clockIn)} {fmtTime(s.clockIn)} – {s.clockOut ? fmtTime(s.clockOut) : "進行中"}
                                 </span>
                                 <div className="text-right">
-                                  {sessionHasTax && gross !== null ? (
-                                    <>
-                                      <div className="text-xs text-gray-500">${gross.toFixed(2)}</div>
-                                      <div className="text-sm font-semibold text-green-400">${net!.toFixed(2)}</div>
-                                    </>
-                                  ) : gross !== null ? (
+                                  {gross !== null ? (
                                     <span className="text-sm font-semibold text-green-400">${gross.toFixed(2)}</span>
                                   ) : (
                                     <span className="text-xs text-gray-500">佣金制</span>
                                   )}
                                 </div>
                               </div>
-                              <div className="flex gap-2">
+                              <div className="flex items-center justify-between">
                                 <button
                                   onClick={() => startEdit(s)}
-                                  className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                                  className="text-sm text-blue-400 hover:text-blue-300 transition-colors px-3 py-1.5 -ml-2 rounded-lg hover:bg-blue-400/10"
                                 >
                                   編輯
                                 </button>
                                 <button
                                   onClick={() => handleDelete(s.id)}
-                                  className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                                  className="text-sm text-red-400 hover:text-red-300 transition-colors px-3 py-1.5 -mr-2 rounded-lg hover:bg-red-400/10"
                                 >
                                   刪除
                                 </button>

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { OnboardingForm } from "@/components/OnboardingForm";
 import { useDevice } from "@/hooks/useDevice";
-import { calcSessionIncome } from "@/lib/income";
+import { calcSessionGross } from "@/lib/income";
 import type { OvertimeTier } from "@/lib/income";
 
 type Job = {
@@ -12,11 +12,16 @@ type Job = {
   name: string;
   hourlyRate: number | null;
   commissionPercentage: number | null;
+  commissionRequired: boolean;
   payFrequency: string;
   payDay: number | null;
   taxEnabled: boolean;
   breakDuration: number | null;
   breakRate: number | null;
+  penaltyRatesEnabled: boolean;
+  publicHolidayRate: number;
+  saturdayRate: number;
+  sundayRate: number;
   overtimeTiers: OvertimeTier[];
   createdAt: string;
 };
@@ -27,6 +32,8 @@ type WorkSession = {
   job: Job;
   clockIn: string;
   clockOut: string | null;
+  isPublicHoliday: boolean;
+  dailyRevenue: number | null;
   breaks: { id: string; startTime: string; endTime: string | null; isPaid: boolean }[];
 };
 
@@ -38,6 +45,15 @@ function formatDuration(ms: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
+function fmtTime(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+}
+
+function fmtDate(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
 
 export default function Home() {
   const { deviceId, userName, loaded } = useDevice();
@@ -47,12 +63,8 @@ export default function Home() {
   const [elapsed, setElapsed] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [recentSessions, setRecentSessions] = useState<WorkSession[]>([]);
-  const [taxRate, setTaxRate] = useState(0);
-
-  useEffect(() => {
-    const stored = parseFloat(localStorage.getItem("taxRate") ?? "0");
-    setTaxRate(isNaN(stored) ? 0 : stored);
-  }, []);
+  const [dailyRevenue, setDailyRevenue] = useState("");
+  const [isPublicHoliday, setIsPublicHoliday] = useState(false);
 
   const fetchJobs = useCallback(async (id: string) => {
     const res = await fetch("/api/jobs", { headers: { "x-device-id": id } });
@@ -105,14 +117,20 @@ export default function Home() {
 
   const handleClockOut = async () => {
     if (!activeSession || !deviceId) return;
+    const body: Record<string, unknown> = { clockOut: "now" };
+    if (isPublicHoliday) body.isPublicHoliday = true;
+    if (dailyRevenue) body.dailyRevenue = parseFloat(dailyRevenue);
+
     const res = await fetch(`/api/sessions/${activeSession.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json", "x-device-id": deviceId },
-      body: JSON.stringify({ clockOut: "now" }),
+      body: JSON.stringify(body),
     });
     if (res.ok) {
       setActiveSession(null);
       setElapsed(0);
+      setDailyRevenue("");
+      setIsPublicHoliday(false);
       fetchRecentSessions(deviceId);
     }
   };
@@ -132,27 +150,69 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-950">
+      <div className="flex items-center justify-center h-full bg-gray-950">
         <div className="text-white">載入中...</div>
       </div>
     );
   }
 
+  const isCommissionJob = activeSession?.job.commissionPercentage != null;
+  const clockOutDisabled = isCommissionJob && (activeSession?.job.commissionRequired ?? false) && !dailyRevenue;
+
   return (
-    <main className="min-h-screen bg-gray-950 text-white">
+    <main className="bg-gray-950 text-white">
       <div className="max-w-md mx-auto px-4 py-8">
         <h1 className="text-xl font-semibold text-center mb-6">歡迎，{userName}</h1>
 
         {/* Active session timer */}
         {activeSession && (
-          <div className="bg-green-900/40 border border-green-700 rounded-2xl p-6 mb-6 text-center">
+          <div className="bg-green-900/40 border border-green-700 rounded-2xl p-6 mb-4 text-center">
             <p className="text-green-400 text-sm uppercase tracking-wide mb-1">
               打卡中 — {activeSession.job.name}
             </p>
             <p className="text-5xl font-mono font-bold">{formatDuration(elapsed)}</p>
             <p className="text-gray-400 text-sm mt-2">
-              自 {new Date(activeSession.clockIn).toLocaleTimeString("zh-TW")}
+              自 {fmtTime(activeSession.clockIn)}
             </p>
+          </div>
+        )}
+
+        {/* Commission revenue input (before clock out) */}
+        {activeSession && isCommissionJob && (
+          <div className="bg-gray-800 rounded-2xl p-4 mb-4">
+            <label className="block text-sm text-gray-400 mb-1.5">
+              今日業績
+              {activeSession.job.commissionRequired
+                ? <span className="text-red-400 ml-1">（必填）</span>
+                : <span className="text-gray-500 ml-1">（選填）</span>
+              }
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+              <input
+                type="number"
+                value={dailyRevenue}
+                onChange={(e) => setDailyRevenue(e.target.value)}
+                placeholder="0.00"
+                min="0"
+                step="0.01"
+                className="w-full bg-gray-700 rounded-xl pl-7 pr-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Public holiday toggle (penalty rates enabled) */}
+        {activeSession && activeSession.job.penaltyRatesEnabled && (
+          <div className="flex items-center justify-between bg-gray-800 rounded-2xl px-4 py-3 mb-4">
+            <span className="text-sm text-gray-300">國定假日</span>
+            <button
+              type="button"
+              onClick={() => setIsPublicHoliday((v) => !v)}
+              className={`relative inline-flex w-10 h-5 rounded-full transition-colors flex-shrink-0 ${isPublicHoliday ? "bg-amber-500" : "bg-gray-600"}`}
+            >
+              <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${isPublicHoliday ? "translate-x-5" : "translate-x-0"}`} />
+            </button>
           </div>
         )}
 
@@ -192,7 +252,7 @@ export default function Home() {
         {(jobs.length > 0 || activeSession) && (
           <button
             onClick={activeSession ? handleClockOut : handleClockIn}
-            disabled={!activeSession && !selectedJobId}
+            disabled={(!activeSession && !selectedJobId) || (activeSession ? clockOutDisabled : false)}
             className={`w-full py-5 rounded-2xl text-xl font-bold transition-all mt-2 ${
               activeSession
                 ? "bg-red-600 hover:bg-red-700 active:bg-red-800"
@@ -212,26 +272,17 @@ export default function Home() {
                 const duration = session.clockOut
                   ? new Date(session.clockOut).getTime() - new Date(session.clockIn).getTime()
                   : 0;
-                const income = calcSessionIncome(session, taxRate);
+                const gross = calcSessionGross(session);
                 return (
                   <div key={session.id} className="bg-gray-800 rounded-xl p-4 flex justify-between items-center">
                     <div>
                       <p className="font-medium">{session.job.name}</p>
                       <p className="text-gray-400 text-sm">
-                        {new Date(session.clockIn).toLocaleDateString("zh-TW")}
-                        {" "}
-                        {new Date(session.clockIn).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" })}
-                        {session.clockOut && (
-                          <> — {new Date(session.clockOut).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" })}</>
-                        )}
+                        {fmtDate(session.clockIn)} {fmtTime(session.clockIn)}
+                        {session.clockOut && <> — {fmtTime(session.clockOut)}</>}
                       </p>
-                      {income !== null && (
-                        <p className="text-green-400 text-sm mt-0.5">
-                          ${income.toFixed(2)}
-                          {session.job.taxEnabled && taxRate > 0 && (
-                            <span className="text-gray-500 text-xs ml-1">(稅後)</span>
-                          )}
-                        </p>
+                      {gross !== null && (
+                        <p className="text-green-400 text-sm mt-0.5">${gross.toFixed(2)}</p>
                       )}
                     </div>
                     <p className="font-mono text-gray-300 text-sm">{formatDuration(duration)}</p>

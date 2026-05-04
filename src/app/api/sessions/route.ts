@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "x-device-id required" }, { status: 400 });
   }
 
-  const { jobId, clockIn, clockOut } = await req.json();
+  const { jobId, clockIn, clockOut, isPublicHoliday, dailyRevenue } = await req.json();
   if (!jobId) return NextResponse.json({ error: "jobId required" }, { status: 400 });
 
   // Only block concurrent active session if this is a real clock-in (no clockIn provided)
@@ -62,6 +62,8 @@ export async function POST(req: NextRequest) {
       deviceId, jobId,
       clockIn: clockIn ? new Date(clockIn) : new Date(),
       clockOut: clockOut ? new Date(clockOut) : undefined,
+      isPublicHoliday: isPublicHoliday ?? false,
+      dailyRevenue: dailyRevenue ?? null,
     },
     include: { job: { include: { overtimeTiers: { orderBy: { afterHours: "asc" } } } }, breaks: true },
   });

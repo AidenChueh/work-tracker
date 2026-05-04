@@ -22,11 +22,16 @@ model Job {
   name                 String
   hourlyRate           Float?
   commissionPercentage Float?
+  commissionRequired   Boolean       @default(false)
   payFrequency         String        @default("weekly")
   payDay               Int?
   taxEnabled           Boolean       @default(false)
   breakDuration        Int?
   breakRate            Float?
+  penaltyRatesEnabled  Boolean       @default(false)
+  publicHolidayRate    Float         @default(2.5)
+  saturdayRate         Float         @default(1.5)
+  sundayRate           Float         @default(2.0)
   isActive             Boolean       @default(true)
   createdAt            DateTime      @default(now())
   sessions             WorkSession[]
@@ -43,16 +48,18 @@ model OvertimeTier {
 }
 
 model WorkSession {
-  id        String    @id @default(uuid())
-  deviceId  String
-  device    Device    @relation(fields: [deviceId], references: [id])
-  jobId     String
-  job       Job       @relation(fields: [jobId], references: [id])
-  clockIn   DateTime
-  clockOut  DateTime?
-  notes     String?
-  createdAt DateTime  @default(now())
-  breaks    Break[]
+  id              String    @id @default(uuid())
+  deviceId        String
+  device          Device    @relation(fields: [deviceId], references: [id])
+  jobId           String
+  job             Job       @relation(fields: [jobId], references: [id])
+  clockIn         DateTime
+  clockOut        DateTime?
+  notes           String?
+  isPublicHoliday Boolean   @default(false)
+  dailyRevenue    Float?
+  createdAt       DateTime  @default(now())
+  breaks          Break[]
 }
 
 model Break {

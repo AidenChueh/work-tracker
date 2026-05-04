@@ -9,12 +9,17 @@ type Job = {
   name: string;
   hourlyRate: number | null;
   commissionPercentage: number | null;
+  commissionRequired: boolean;
   payFrequency: string;
   payDay: number | null;
   taxEnabled: boolean;
   overtimeTiers: { id: string; afterHours: number; rate: number }[];
   breakDuration: number | null;
   breakRate: number | null;
+  penaltyRatesEnabled: boolean;
+  publicHolidayRate: number;
+  saturdayRate: number;
+  sundayRate: number;
   createdAt: string;
 };
 
@@ -26,11 +31,24 @@ type Props = {
 
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
 
+function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onChange}
+      className={`relative inline-flex w-10 h-5 rounded-full transition-colors flex-shrink-0 ${checked ? "bg-blue-600" : "bg-gray-600"}`}
+    >
+      <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-5" : "translate-x-0"}`} />
+    </button>
+  );
+}
+
 export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
   const [name, setName] = useState("");
   const [payType, setPayType] = useState<"hourly" | "commission">("hourly");
   const [hourlyRate, setHourlyRate] = useState("");
   const [commissionPercentage, setCommissionPercentage] = useState("");
+  const [commissionRequired, setCommissionRequired] = useState(false);
   const [payFrequency, setPayFrequency] = useState("weekly");
   const [payDay, setPayDay] = useState("");
   const [taxEnabled, setTaxEnabled] = useState(false);
@@ -38,6 +56,10 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
   const [hasBreak, setHasBreak] = useState(false);
   const [breakDuration, setBreakDuration] = useState("");
   const [breakRate, setBreakRate] = useState("");
+  const [penaltyRatesEnabled, setPenaltyRatesEnabled] = useState(false);
+  const [publicHolidayRate, setPublicHolidayRate] = useState("2.5");
+  const [saturdayRate, setSaturdayRate] = useState("1.5");
+  const [sundayRate, setSundayRate] = useState("2.0");
   const [submitting, setSubmitting] = useState(false);
 
   const addTier = () => setOvertimeTiers((prev) => [...prev, { afterHours: "", rate: "" }]);
@@ -58,6 +80,7 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
         hourlyRate: payType === "hourly" ? parseFloat(hourlyRate) || null : null,
         commissionPercentage:
           payType === "commission" ? parseFloat(commissionPercentage) / 100 || null : null,
+        commissionRequired: payType === "commission" ? commissionRequired : false,
         payFrequency,
         payDay: payDay !== "" ? parseInt(payDay) : null,
         taxEnabled,
@@ -66,6 +89,10 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
           .map((t) => ({ afterHours: parseFloat(t.afterHours), rate: parseFloat(t.rate) })),
         breakDuration: hasBreak ? parseInt(breakDuration) || null : null,
         breakRate: hasBreak ? parseFloat(breakRate) || null : null,
+        penaltyRatesEnabled,
+        publicHolidayRate: parseFloat(publicHolidayRate) || 2.5,
+        saturdayRate: parseFloat(saturdayRate) || 1.5,
+        sundayRate: parseFloat(sundayRate) || 2.0,
       }),
     });
 
@@ -126,19 +153,25 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
       )}
 
       {payType === "commission" && (
-        <div>
-          <label className="block text-sm text-gray-400 mb-1">佣金比例（%）</label>
-          <input
-            type="number"
-            value={commissionPercentage}
-            onChange={(e) => setCommissionPercentage(e.target.value)}
-            placeholder="10"
-            min="0"
-            max="100"
-            step="0.1"
-            className="w-full bg-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
+        <>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">佣金比例（%）</label>
+            <input
+              type="number"
+              value={commissionPercentage}
+              onChange={(e) => setCommissionPercentage(e.target.value)}
+              placeholder="10"
+              min="0"
+              max="100"
+              step="0.1"
+              className="w-full bg-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div className="flex items-center justify-between py-1">
+            <span className="text-sm text-gray-400">下班需填業績（必填）</span>
+            <Toggle checked={commissionRequired} onChange={() => setCommissionRequired((v) => !v)} />
+          </div>
+        </>
       )}
 
       <div>
@@ -244,13 +277,7 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
           {/* Break */}
           <div className="flex items-center justify-between py-2">
             <span className="text-sm text-gray-400">有休息時間</span>
-            <button
-              type="button"
-              onClick={() => setHasBreak((v) => !v)}
-              className={`relative inline-flex w-10 h-5 rounded-full transition-colors flex-shrink-0 ${hasBreak ? "bg-blue-600" : "bg-gray-600"}`}
-            >
-              <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${hasBreak ? "translate-x-5" : "translate-x-0"}`} />
-            </button>
+            <Toggle checked={hasBreak} onChange={() => setHasBreak((v) => !v)} />
           </div>
           {hasBreak && (
             <div className="flex gap-2">
@@ -283,15 +310,45 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
         </>
       )}
 
+      {/* Penalty Rates */}
+      <div className="border-t border-gray-700/50 pt-4">
+        <div className="flex items-center justify-between mb-2">
+          <div>
+            <span className="text-sm text-gray-300">澳洲 Penalty Rates</span>
+            <p className="text-xs text-gray-500 mt-0.5">假日薪資加乘（週六、週日、國定假日）</p>
+          </div>
+          <Toggle checked={penaltyRatesEnabled} onChange={() => setPenaltyRatesEnabled((v) => !v)} />
+        </div>
+        {penaltyRatesEnabled && (
+          <div className="space-y-2 mt-3 bg-gray-700/40 rounded-xl p-3">
+            {[
+              { label: "國定假日", value: publicHolidayRate, set: setPublicHolidayRate, default: "2.5" },
+              { label: "週六", value: saturdayRate, set: setSaturdayRate, default: "1.5" },
+              { label: "週日", value: sundayRate, set: setSundayRate, default: "2.0" },
+            ].map(({ label, value, set, default: def }) => (
+              <div key={label} className="flex items-center gap-3">
+                <span className="text-sm text-gray-300 w-20 shrink-0">{label}</span>
+                <div className="flex-1 flex items-center gap-1">
+                  <input
+                    type="number"
+                    value={value}
+                    onChange={(e) => set(e.target.value)}
+                    placeholder={def}
+                    min="1"
+                    step="0.1"
+                    className="w-full bg-gray-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-500 shrink-0">倍</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="flex items-center justify-between py-2">
         <span className="text-sm text-gray-400">扣稅</span>
-        <button
-          type="button"
-          onClick={() => setTaxEnabled((v) => !v)}
-          className={`relative inline-flex w-10 h-5 rounded-full transition-colors flex-shrink-0 ${taxEnabled ? "bg-blue-600" : "bg-gray-600"}`}
-        >
-          <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${taxEnabled ? "translate-x-5" : "translate-x-0"}`} />
-        </button>
+        <Toggle checked={taxEnabled} onChange={() => setTaxEnabled((v) => !v)} />
       </div>
 
       <div className="flex gap-2 pt-1">

@@ -10,12 +10,17 @@ type Job = {
   name: string;
   hourlyRate: number | null;
   commissionPercentage: number | null;
+  commissionRequired: boolean;
   payFrequency: string;
   payDay: number | null;
   taxEnabled: boolean;
   overtimeTiers: { id: string; afterHours: number; rate: number }[];
   breakDuration: number | null;
   breakRate: number | null;
+  penaltyRatesEnabled: boolean;
+  publicHolidayRate: number;
+  saturdayRate: number;
+  sundayRate: number;
   createdAt: string;
 };
 

@@ -9,12 +9,17 @@ type Job = {
   name: string;
   hourlyRate: number | null;
   commissionPercentage: number | null;
+  commissionRequired: boolean;
   payFrequency: string;
   payDay: number | null;
   taxEnabled: boolean;
   overtimeTiers: { afterHours: number; rate: number }[];
   breakDuration: number | null;
   breakRate: number | null;
+  penaltyRatesEnabled: boolean;
+  publicHolidayRate: number;
+  saturdayRate: number;
+  sundayRate: number;
 };
 
 type Break = {
@@ -30,6 +35,8 @@ type WorkSession = {
   job: Job;
   clockIn: string;
   clockOut: string | null;
+  isPublicHoliday: boolean;
+  dailyRevenue: number | null;
   breaks: Break[];
 };
 
@@ -62,7 +69,11 @@ function endOfDay(date: Date): Date {
   return d;
 }
 
-// For a weekly-pay job: pay day is cellDate, period is the 7 days ending the day before
+function fmtTime(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+}
+
 function weeklyPeriodForCell(cellDate: Date): { start: Date; end: Date } {
   const dayBefore = new Date(cellDate);
   dayBefore.setDate(dayBefore.getDate() - 1);
@@ -93,9 +104,8 @@ export default function CalendarPage() {
   }, []);
 
   const fetchSessions = useCallback(async (id: string, year: number, month: number) => {
-    // Fetch from 6 days before month start (for weekly window overlap) to end of month
-    const from = new Date(year, month, -5); // 6 days before 1st
-    const to = new Date(year, month + 1, 0, 23, 59, 59); // last day of month
+    const from = new Date(year, month, -5);
+    const to = new Date(year, month + 1, 0, 23, 59, 59);
     const res = await fetch(
       `/api/sessions?since=${from.toISOString()}&to=${to.toISOString()}`,
       { headers: { "x-device-id": id } }
@@ -116,16 +126,13 @@ export default function CalendarPage() {
     ]).finally(() => setLoading(false));
   }, [deviceId, loaded, viewYear, viewMonth, fetchJobs, fetchSessions]);
 
-  // Build calendar grid: ISO week (Mon–Sun)
   const calendarDays = useMemo(() => {
     const firstDay = new Date(viewYear, viewMonth, 1);
     const lastDay = new Date(viewYear, viewMonth + 1, 0);
-    // Start from Monday of the week containing firstDay
-    const startDow = firstDay.getDay(); // 0=Sun
+    const startDow = firstDay.getDay();
     const startOffset = startDow === 0 ? 6 : startDow - 1;
     const gridStart = new Date(firstDay);
     gridStart.setDate(gridStart.getDate() - startOffset);
-    // End on Sunday of the week containing lastDay
     const endDow = lastDay.getDay();
     const endOffset = endDow === 0 ? 0 : 7 - endDow;
     const gridEnd = new Date(lastDay);
@@ -140,7 +147,6 @@ export default function CalendarPage() {
     return days;
   }, [viewYear, viewMonth]);
 
-  // Index sessions by local date string
   const sessionsByDay = useMemo(() => {
     const map = new Map<string, WorkSession[]>();
     for (const s of sessions) {
@@ -151,7 +157,6 @@ export default function CalendarPage() {
     return map;
   }, [sessions]);
 
-  // Weekly-pay jobs keyed by payDay weekday
   const weeklyJobs = useMemo(
     () => jobs.filter((j) => j.payFrequency === "weekly" && j.payDay != null),
     [jobs]
@@ -161,23 +166,40 @@ export default function CalendarPage() {
     [jobs]
   );
 
-  function getWeeklyBadge(cellDate: Date): { total: number; jobCount: number; isEstimate: boolean } | null {
+  // Precompute which days are in a weekly pay period (for background highlight)
+  const payPeriodDaySet = useMemo(() => {
+    const set = new Set<string>();
+    for (const day of calendarDays) {
+      const cellDow = day.getDay();
+      for (const job of weeklyJobs) {
+        if (job.payDay === cellDow) {
+          const { start, end } = weeklyPeriodForCell(day);
+          let cur = new Date(start);
+          while (cur <= end) {
+            set.add(localDateStr(cur));
+            cur.setDate(cur.getDate() + 1);
+          }
+        }
+      }
+    }
+    return set;
+  }, [calendarDays, weeklyJobs]);
+
+  function getWeeklyBadge(cellDate: Date): { total: number; jobCount: number } | null {
     const cellDow = cellDate.getDay();
     const matching = weeklyJobs.filter((j) => j.payDay === cellDow);
     if (matching.length === 0) return null;
 
     const { start, end } = weeklyPeriodForCell(cellDate);
-    const today = new Date();
-    const isEstimate = cellDate > today;
 
     const total = sessions
       .filter((s) => {
         const t = new Date(s.clockIn).getTime();
         return matching.some((j) => j.id === s.jobId) && t >= start.getTime() && t <= end.getTime();
       })
-      .reduce((sum, s) => sum + (calcSessionIncome(s, taxRate) ?? 0), 0);
+      .reduce((sum, s) => sum + (calcSessionGross(s) ?? 0), 0);
 
-    return total > 0 ? { total, jobCount: matching.length, isEstimate } : null;
+    return total > 0 ? { total, jobCount: matching.length } : null;
   }
 
   function getMonthlyBadge(cellDate: Date): { total: number; jobCount: number } | null {
@@ -191,7 +213,7 @@ export default function CalendarPage() {
         const t = new Date(s.clockIn).getTime();
         return t >= monthStart.getTime() && t <= monthEnd.getTime();
       })
-      .reduce((sum, s) => sum + (calcSessionIncome(s, taxRate) ?? 0), 0);
+      .reduce((sum, s) => sum + (calcSessionGross(s) ?? 0), 0);
     return total > 0 ? { total, jobCount: matching.length } : null;
   }
 
@@ -223,20 +245,21 @@ export default function CalendarPage() {
     const now = new Date();
     setViewYear(now.getFullYear());
     setViewMonth(now.getMonth());
+    setSelection(null);
   }
 
   const todayStr = localDateStr(new Date());
 
   if (!loaded || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-950">
+      <div className="flex items-center justify-center h-64 bg-gray-950">
         <div className="text-white">載入中...</div>
       </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white">
+    <main className="bg-gray-950 text-white">
       <div className="max-w-md mx-auto px-4 py-6">
 
         {/* Month navigation */}
@@ -284,13 +307,14 @@ export default function CalendarPage() {
             const isCurrentMonth = day.getMonth() === viewMonth;
             const isToday = dateStr === todayStr;
             const daySessions = sessionsByDay.get(dateStr) ?? [];
-            const dayIncome = daySessions.reduce((sum, s) => sum + (calcSessionIncome(s, taxRate) ?? 0), 0);
-            const hasIncome = daySessions.some((s) => calcSessionIncome(s, taxRate) !== null);
+            const dayIncome = daySessions.reduce((sum, s) => sum + (calcSessionGross(s) ?? 0), 0);
+            const hasIncome = daySessions.some((s) => calcSessionGross(s) !== null);
             const weeklyBadge = getWeeklyBadge(day);
             const monthlyBadge = getMonthlyBadge(day);
             const isSelected = selection?.type === "day" && selection.date === dateStr;
             const isFuture = day > new Date();
-            const isClickable = isCurrentMonth && !isFuture && (daySessions.length > 0);
+            const isClickable = isCurrentMonth && !isFuture && daySessions.length > 0;
+            const isInPeriod = isCurrentMonth && payPeriodDaySet.has(dateStr);
 
             return (
               <div
@@ -301,17 +325,15 @@ export default function CalendarPage() {
                 }}
                 className={`relative flex flex-col items-center pt-1 pb-1.5 rounded-xl min-h-[64px] transition-colors
                   ${isClickable ? "cursor-pointer hover:bg-gray-800" : ""}
-                  ${isSelected ? "bg-gray-800 ring-1 ring-blue-500" : ""}
+                  ${isSelected ? "bg-gray-800 ring-1 ring-blue-500" : isInPeriod ? "bg-amber-500/5" : ""}
                 `}
               >
-                {/* Date number */}
                 <div className={`w-7 h-7 flex items-center justify-center rounded-full text-sm font-medium mb-0.5
                   ${isToday ? "bg-blue-600 text-white" : isCurrentMonth ? "text-white" : "text-gray-700"}
                 `}>
                   {day.getDate()}
                 </div>
 
-                {/* Work dots */}
                 {daySessions.length > 0 && (
                   <div className="flex gap-0.5 mb-0.5">
                     {daySessions.slice(0, 3).map((s) => (
@@ -323,7 +345,6 @@ export default function CalendarPage() {
                   </div>
                 )}
 
-                {/* Day earnings */}
                 {hasIncome && dayIncome > 0 && (
                   <span className="text-[10px] text-green-400 leading-tight">
                     ${dayIncome.toFixed(0)}
@@ -332,7 +353,6 @@ export default function CalendarPage() {
 
                 {/* Weekly payout badge */}
                 {weeklyBadge && (() => {
-                  const { total, isEstimate } = weeklyBadge;
                   const { start, end } = weeklyPeriodForCell(day);
                   const cellDow = day.getDay();
                   const matchingJobIds = weeklyJobs.filter((j) => j.payDay === cellDow).map((j) => j.id);
@@ -350,7 +370,7 @@ export default function CalendarPage() {
                       }}
                       className={`mt-0.5 px-1.5 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/40 text-[9px] text-amber-400 hover:bg-amber-500/30 transition-colors leading-tight w-full text-center ${isActive ? "ring-1 ring-amber-400/60" : ""}`}
                     >
-                      {isEstimate ? "~" : ""}週${total.toFixed(0)}
+                      ${weeklyBadge.total.toFixed(0)}
                     </button>
                   );
                 })()}
@@ -374,7 +394,7 @@ export default function CalendarPage() {
                       }}
                       className={`mt-0.5 px-1.5 py-0.5 rounded-md bg-purple-500/20 border border-purple-500/40 text-[9px] text-purple-400 hover:bg-purple-500/30 transition-colors leading-tight w-full text-center ${isActive ? "ring-1 ring-purple-400/60" : ""}`}
                     >
-                      月${monthlyBadge.total.toFixed(0)}
+                      ${monthlyBadge.total.toFixed(0)}
                     </button>
                   );
                 })()}
@@ -387,12 +407,12 @@ export default function CalendarPage() {
         <div className="flex gap-4 mt-3 px-1">
           <div className="flex items-center gap-1.5 text-xs text-gray-500">
             <div className="w-1.5 h-1.5 bg-green-400 rounded-full" />
-            有班
+            上班
           </div>
           {weeklyJobs.length > 0 && (
             <div className="flex items-center gap-1.5 text-xs text-gray-500">
               <div className="w-3 h-3 rounded bg-amber-500/30 border border-amber-500/50" />
-              週薪日
+              發薪日
             </div>
           )}
           {monthlyJobs.length > 0 && (
@@ -408,7 +428,7 @@ export default function CalendarPage() {
           <div className="mt-6 bg-gray-800 rounded-2xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
               <h3 className="font-semibold text-sm">
-                {selection.type === "day" ? `${selection.date}` : detailData.label}
+                {selection.type === "day" ? selection.date : detailData.label}
               </h3>
               <button
                 onClick={() => setSelection(null)}
@@ -422,20 +442,19 @@ export default function CalendarPage() {
               <p className="text-gray-400 text-sm text-center py-6">這段期間沒有打卡紀錄</p>
             ) : (
               <>
-                {/* Group by job for period view, flat for day view */}
                 {(() => {
-                  const grouped = new Map<string, WorkSession[]>();
+                  const groupedMap = new Map<string, WorkSession[]>();
                   for (const s of detailData.sessions) {
-                    if (!grouped.has(s.jobId)) grouped.set(s.jobId, []);
-                    grouped.get(s.jobId)!.push(s);
+                    if (!groupedMap.has(s.jobId)) groupedMap.set(s.jobId, []);
+                    groupedMap.get(s.jobId)!.push(s);
                   }
-                  const groups = Array.from(grouped.values());
+                  const groups = Array.from(groupedMap.values());
                   const showJobHeader = groups.length > 1 || selection.type === "period";
 
                   return groups.map((groupSessions) => {
                     const job = groupSessions[0].job;
-                    const groupTotal = groupSessions.reduce((sum, s) => sum + (calcSessionIncome(s, taxRate) ?? 0), 0);
-                    const groupHasIncome = groupSessions.some((s) => calcSessionIncome(s, taxRate) !== null);
+                    const groupGross = groupSessions.reduce((sum, s) => sum + (calcSessionGross(s) ?? 0), 0);
+                    const groupHasIncome = groupSessions.some((s) => calcSessionGross(s) !== null);
 
                     return (
                       <div key={job.id}>
@@ -443,14 +462,14 @@ export default function CalendarPage() {
                           <div className="flex justify-between items-center px-4 py-2 bg-gray-750 border-b border-gray-700/50">
                             <span className="text-xs font-medium text-gray-300">{job.name}</span>
                             {groupHasIncome && (
-                              <span className="text-xs text-green-400">小計 ${groupTotal.toFixed(2)}</span>
+                              <span className="text-xs text-green-400">小計 ${groupGross.toFixed(2)}</span>
                             )}
                           </div>
                         )}
                         {groupSessions
                           .sort((a, b) => new Date(a.clockIn).getTime() - new Date(b.clockIn).getTime())
                           .map((s) => {
-                            const income = calcSessionIncome(s, taxRate);
+                            const gross = calcSessionGross(s);
                             const workedMs = s.clockOut
                               ? new Date(s.clockOut).getTime() - new Date(s.clockIn).getTime()
                               : 0;
@@ -467,11 +486,9 @@ export default function CalendarPage() {
                                       {new Date(s.clockIn).toLocaleDateString("zh-TW")}
                                     </p>
                                     <p className="text-xs text-gray-400 mt-0.5">
-                                      {new Date(s.clockIn).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" })}
+                                      {fmtTime(s.clockIn)}
                                       {" — "}
-                                      {s.clockOut
-                                        ? new Date(s.clockOut).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" })
-                                        : "進行中"}
+                                      {s.clockOut ? fmtTime(s.clockOut) : "進行中"}
                                     </p>
                                     {unpaidMs > 0 && (
                                       <p className="text-xs text-gray-500 mt-0.5">
@@ -484,8 +501,8 @@ export default function CalendarPage() {
                                     {job.hourlyRate != null && (
                                       <p className="text-xs text-gray-500">${job.hourlyRate}/hr</p>
                                     )}
-                                    {income !== null ? (
-                                      <p className="text-sm font-semibold text-green-400">${income.toFixed(2)}</p>
+                                    {gross !== null ? (
+                                      <p className="text-sm font-semibold text-green-400">${gross.toFixed(2)}</p>
                                     ) : (
                                       <p className="text-xs text-gray-500">佣金制</p>
                                     )}
@@ -501,17 +518,18 @@ export default function CalendarPage() {
 
                 {/* Footer total */}
                 {(() => {
-                  const hasIncome = detailData.sessions.some((s) => calcSessionIncome(s, taxRate) !== null);
+                  const hasIncome = detailData.sessions.some((s) => calcSessionGross(s) !== null);
                   if (!hasIncome) return null;
                   const gross = detailData.sessions.reduce((sum, s) => sum + (calcSessionGross(s) ?? 0), 0);
-                  const net = detailData.sessions.reduce((sum, s) => sum + (calcSessionIncome(s, taxRate) ?? 0), 0);
+                  const isPeriod = selection.type === "period";
                   const hasTax = taxRate > 0 && detailData.sessions.some((s) => s.job.taxEnabled);
-                  const label = selection.type !== "period" ? "當日合計"
-                    : sessions.some((s) => selection.jobIds.includes(s.jobId) && jobs.find((j) => j.id === s.jobId)?.payFrequency === "monthly") ? "月薪合計"
+                  const net = detailData.sessions.reduce((sum, s) => sum + (calcSessionIncome(s, taxRate) ?? 0), 0);
+                  const label = !isPeriod ? "當日合計"
+                    : detailData.sessions.some((s) => selection.type === "period" && jobs.find((j) => j.id === s.jobId)?.payFrequency === "monthly") ? "月薪合計"
                     : "週薪合計";
                   return (
                     <div className="px-4 py-3 border-t border-gray-700 bg-gray-900/40">
-                      {hasTax ? (
+                      {isPeriod && hasTax ? (
                         <div className="flex justify-between items-center">
                           <span className="text-sm text-gray-400">{label}</span>
                           <div className="text-right">

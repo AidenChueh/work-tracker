@@ -9,12 +9,17 @@ type Job = {
   name: string;
   hourlyRate: number | null;
   commissionPercentage: number | null;
+  commissionRequired: boolean;
   payFrequency: string;
   payDay: number | null;
   taxEnabled: boolean;
   overtimeTiers: { id: string; afterHours: number; rate: number }[];
   breakDuration: number | null;
   breakRate: number | null;
+  penaltyRatesEnabled: boolean;
+  publicHolidayRate: number;
+  saturdayRate: number;
+  sundayRate: number;
   createdAt: string;
 };
 
@@ -28,6 +33,18 @@ type Props = {
 
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
 
+function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onChange}
+      className={`relative inline-flex w-10 h-5 rounded-full transition-colors flex-shrink-0 ${checked ? "bg-blue-600" : "bg-gray-600"}`}
+    >
+      <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-5" : "translate-x-0"}`} />
+    </button>
+  );
+}
+
 export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }: Props) {
   const [name, setName] = useState(job.name);
   const [payType, setPayType] = useState<"hourly" | "commission">(
@@ -37,6 +54,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
   const [commissionPercentage, setCommissionPercentage] = useState(
     job.commissionPercentage != null ? (job.commissionPercentage * 100).toString() : ""
   );
+  const [commissionRequired, setCommissionRequired] = useState(job.commissionRequired);
   const [payFrequency, setPayFrequency] = useState(job.payFrequency);
   const [payDay, setPayDay] = useState(job.payDay?.toString() ?? "");
   const [taxEnabled, setTaxEnabled] = useState(job.taxEnabled);
@@ -46,6 +64,10 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
   const [hasBreak, setHasBreak] = useState(job.breakDuration != null);
   const [breakDuration, setBreakDuration] = useState(job.breakDuration?.toString() ?? "");
   const [breakRate, setBreakRate] = useState(job.breakRate?.toString() ?? "");
+  const [penaltyRatesEnabled, setPenaltyRatesEnabled] = useState(job.penaltyRatesEnabled);
+  const [publicHolidayRate, setPublicHolidayRate] = useState(job.publicHolidayRate.toString());
+  const [saturdayRate, setSaturdayRate] = useState(job.saturdayRate.toString());
+  const [sundayRate, setSundayRate] = useState(job.sundayRate.toString());
   const [submitting, setSubmitting] = useState(false);
 
   const addTier = () => setOvertimeTiers((prev) => [...prev, { afterHours: "", rate: "" }]);
@@ -66,6 +88,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
         hourlyRate: payType === "hourly" ? parseFloat(hourlyRate) || null : null,
         commissionPercentage:
           payType === "commission" ? parseFloat(commissionPercentage) / 100 || null : null,
+        commissionRequired: payType === "commission" ? commissionRequired : false,
         payFrequency,
         payDay: payDay !== "" ? parseInt(payDay) : null,
         taxEnabled,
@@ -74,6 +97,10 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
           .map((t) => ({ afterHours: parseFloat(t.afterHours), rate: parseFloat(t.rate) })),
         breakDuration: hasBreak ? parseInt(breakDuration) || null : null,
         breakRate: hasBreak ? parseFloat(breakRate) || null : null,
+        penaltyRatesEnabled,
+        publicHolidayRate: parseFloat(publicHolidayRate) || 2.5,
+        saturdayRate: parseFloat(saturdayRate) || 1.5,
+        sundayRate: parseFloat(sundayRate) || 2.0,
       }),
     });
 
@@ -137,19 +164,25 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
       )}
 
       {payType === "commission" && (
-        <div>
-          <label className="block text-xs text-gray-400 mb-1">佣金比例（%）</label>
-          <input
-            type="number"
-            value={commissionPercentage}
-            onChange={(e) => setCommissionPercentage(e.target.value)}
-            placeholder="10"
-            min="0"
-            max="100"
-            step="0.1"
-            className="w-full bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
+        <>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">佣金比例（%）</label>
+            <input
+              type="number"
+              value={commissionPercentage}
+              onChange={(e) => setCommissionPercentage(e.target.value)}
+              placeholder="10"
+              min="0"
+              max="100"
+              step="0.1"
+              className="w-full bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div className="flex items-center justify-between py-1">
+            <span className="text-xs text-gray-400">下班需填業績（必填）</span>
+            <Toggle checked={commissionRequired} onChange={() => setCommissionRequired((v) => !v)} />
+          </div>
+        </>
       )}
 
       <div>
@@ -199,7 +232,6 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
 
       {payType === "hourly" && (
         <>
-          {/* Overtime tiers */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-gray-400">加班費設定</span>
@@ -252,16 +284,9 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
             )}
           </div>
 
-          {/* Break */}
           <div className="flex items-center justify-between py-1">
             <span className="text-xs text-gray-400">有休息時間</span>
-            <button
-              type="button"
-              onClick={() => setHasBreak((v) => !v)}
-              className={`relative inline-flex w-10 h-5 rounded-full transition-colors flex-shrink-0 ${hasBreak ? "bg-blue-600" : "bg-gray-600"}`}
-            >
-              <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${hasBreak ? "translate-x-5" : "translate-x-0"}`} />
-            </button>
+            <Toggle checked={hasBreak} onChange={() => setHasBreak((v) => !v)} />
           </div>
           {hasBreak && (
             <div className="flex gap-2">
@@ -294,15 +319,44 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
         </>
       )}
 
+      {/* Penalty Rates */}
+      <div className="border-t border-gray-600/50 pt-3">
+        <div className="flex items-center justify-between mb-2">
+          <div>
+            <span className="text-xs text-gray-300">澳洲 Penalty Rates</span>
+            <p className="text-[10px] text-gray-500 mt-0.5">假日薪資加乘</p>
+          </div>
+          <Toggle checked={penaltyRatesEnabled} onChange={() => setPenaltyRatesEnabled((v) => !v)} />
+        </div>
+        {penaltyRatesEnabled && (
+          <div className="space-y-2 mt-2 bg-gray-600/40 rounded-lg p-2.5">
+            {[
+              { label: "國定假日", value: publicHolidayRate, set: setPublicHolidayRate },
+              { label: "週六", value: saturdayRate, set: setSaturdayRate },
+              { label: "週日", value: sundayRate, set: setSundayRate },
+            ].map(({ label, value, set }) => (
+              <div key={label} className="flex items-center gap-2">
+                <span className="text-xs text-gray-300 w-16 shrink-0">{label}</span>
+                <div className="flex-1 flex items-center gap-1">
+                  <input
+                    type="number"
+                    value={value}
+                    onChange={(e) => set(e.target.value)}
+                    min="1"
+                    step="0.1"
+                    className="w-full bg-gray-600 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <span className="text-xs text-gray-500 shrink-0">倍</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="flex items-center justify-between py-1">
         <span className="text-xs text-gray-400">扣稅</span>
-        <button
-          type="button"
-          onClick={() => setTaxEnabled((v) => !v)}
-          className={`relative inline-flex w-10 h-5 rounded-full transition-colors flex-shrink-0 ${taxEnabled ? "bg-blue-600" : "bg-gray-600"}`}
-        >
-          <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${taxEnabled ? "translate-x-5" : "translate-x-0"}`} />
-        </button>
+        <Toggle checked={taxEnabled} onChange={() => setTaxEnabled((v) => !v)} />
       </div>
 
       <div className="flex gap-2 pt-1">

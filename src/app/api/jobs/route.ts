@@ -23,7 +23,11 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { name, hourlyRate, commissionPercentage, payFrequency, payDay, taxEnabled, breakDuration, breakRate, overtimeTiers } = body;
+  const {
+    name, hourlyRate, commissionPercentage, commissionRequired,
+    payFrequency, payDay, taxEnabled, breakDuration, breakRate, overtimeTiers,
+    penaltyRatesEnabled, publicHolidayRate, saturdayRate, sundayRate,
+  } = body;
 
   if (!name) {
     return NextResponse.json({ error: "name required" }, { status: 400 });
@@ -41,11 +45,16 @@ export async function POST(req: NextRequest) {
       name,
       hourlyRate: hourlyRate ?? null,
       commissionPercentage: commissionPercentage ?? null,
+      commissionRequired: commissionRequired ?? false,
       payFrequency: payFrequency ?? "weekly",
       payDay: payDay ?? null,
       taxEnabled: taxEnabled ?? false,
       breakDuration: breakDuration ?? null,
       breakRate: breakRate ?? null,
+      penaltyRatesEnabled: penaltyRatesEnabled ?? false,
+      publicHolidayRate: publicHolidayRate ?? 2.5,
+      saturdayRate: saturdayRate ?? 1.5,
+      sundayRate: sundayRate ?? 2.0,
       overtimeTiers: Array.isArray(overtimeTiers) && overtimeTiers.length > 0
         ? { create: overtimeTiers.map((t: { afterHours: number; rate: number }, i: number) => ({ afterHours: t.afterHours, rate: t.rate, order: i })) }
         : undefined,
