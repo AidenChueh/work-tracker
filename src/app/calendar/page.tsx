@@ -48,9 +48,22 @@ type WorkSession = {
   breaks: Break[];
 };
 
+type PeriodKind = "weekly" | "biweekly" | "monthly";
+
 type SelectionMode =
   | { type: "day"; date: string }
-  | { type: "period"; jobIds: string[]; periodStart: string; periodEnd: string; payDayLabel: string };
+  | { type: "period"; jobIds: string[]; periodStart: string; periodEnd: string; payDayLabel: string; kind: PeriodKind };
+
+const PERIOD_BG: Record<PeriodKind, string> = {
+  weekly: "bg-amber-500/20",
+  biweekly: "bg-cyan-500/20",
+  monthly: "bg-purple-500/20",
+};
+const PERIOD_BG_FAINT: Record<PeriodKind, string> = {
+  weekly: "bg-amber-500/5",
+  biweekly: "bg-cyan-500/5",
+  monthly: "bg-purple-500/5",
+};
 
 const WEEKDAYS_COL = ["一", "二", "三", "四", "五", "六", "日"];
 
@@ -370,10 +383,12 @@ export default function CalendarPage() {
             const isSelected = selection?.type === "day" && selection.date === dateStr;
             const isFuture = day > new Date();
             const isClickable = isCurrentMonth && !isFuture && daySessions.length > 0;
-            const isInPeriod = isCurrentMonth && payPeriodDaySet.has(dateStr);
-            const isInSelectedPeriod = isCurrentMonth && selection?.type === "period"
+            const isInPeriod = payPeriodDaySet.has(dateStr);
+            const isInSelectedPeriod = selection?.type === "period"
               && startOfDay(day).getTime() >= new Date(selection.periodStart).getTime()
               && startOfDay(day).getTime() <= new Date(selection.periodEnd).getTime();
+            const selectedBg = isInSelectedPeriod && selection?.type === "period" ? PERIOD_BG[selection.kind] : "";
+            const faintBg = isInPeriod ? PERIOD_BG_FAINT.weekly : "";
 
             return (
               <div
@@ -384,7 +399,7 @@ export default function CalendarPage() {
                 }}
                 className={`relative flex flex-col items-center pt-1 pb-1.5 rounded-xl min-h-[64px] transition-colors
                   ${isClickable ? "cursor-pointer hover:bg-gray-800" : ""}
-                  ${isSelected ? "bg-gray-800 ring-1 ring-blue-500" : isInSelectedPeriod ? "bg-amber-500/20" : isInPeriod ? "bg-amber-500/5" : ""}
+                  ${isSelected ? "bg-gray-800 ring-1 ring-blue-500" : isInSelectedPeriod ? selectedBg : faintBg}
                 `}
               >
                 <div className={`w-7 h-7 flex items-center justify-center rounded-full text-sm font-medium mb-0.5
@@ -425,7 +440,7 @@ export default function CalendarPage() {
                         setSelection((prev) =>
                           prev?.type === "period" && prev.periodStart === start.toISOString()
                             ? null
-                            : { type: "period", jobIds: matchingJobIds, periodStart: start.toISOString(), periodEnd: end.toISOString(), payDayLabel: label }
+                            : { type: "period", jobIds: matchingJobIds, periodStart: start.toISOString(), periodEnd: end.toISOString(), payDayLabel: label, kind: "weekly" }
                         );
                       }}
                       className={`mt-0.5 px-1.5 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/40 text-[9px] text-amber-400 hover:bg-amber-500/30 transition-colors leading-tight w-full text-center ${isActive ? "ring-1 ring-amber-400/60" : ""}`}
@@ -449,7 +464,7 @@ export default function CalendarPage() {
                         setSelection((prev) =>
                           prev?.type === "period" && prev.periodStart === start.toISOString()
                             ? null
-                            : { type: "period", jobIds: matchingJobIds, periodStart: start.toISOString(), periodEnd: end.toISOString(), payDayLabel: label }
+                            : { type: "period", jobIds: matchingJobIds, periodStart: start.toISOString(), periodEnd: end.toISOString(), payDayLabel: label, kind: "biweekly" }
                         );
                       }}
                       className={`mt-0.5 px-1.5 py-0.5 rounded-md bg-cyan-500/20 border border-cyan-500/40 text-[9px] text-cyan-300 hover:bg-cyan-500/30 transition-colors leading-tight w-full text-center ${isActive ? "ring-1 ring-cyan-400/60" : ""}`}
@@ -475,7 +490,7 @@ export default function CalendarPage() {
                         setSelection((prev) =>
                           prev?.type === "period" && prev.periodStart === prevMonthStart
                             ? null
-                            : { type: "period", jobIds: matchingJobIds, periodStart: prevMonthStart, periodEnd: prevMonthEnd, payDayLabel: label }
+                            : { type: "period", jobIds: matchingJobIds, periodStart: prevMonthStart, periodEnd: prevMonthEnd, payDayLabel: label, kind: "monthly" }
                         );
                       }}
                       className={`mt-0.5 px-1.5 py-0.5 rounded-md bg-purple-500/20 border border-purple-500/40 text-[9px] text-purple-400 hover:bg-purple-500/30 transition-colors leading-tight w-full text-center ${isActive ? "ring-1 ring-purple-400/60" : ""}`}
@@ -547,13 +562,14 @@ export default function CalendarPage() {
                     const job = groupSessions[0].job;
                     const groupGross = groupSessions.reduce((sum, s) => sum + (calcSessionGross(s) ?? 0), 0);
                     const groupHasIncome = groupSessions.some((s) => calcSessionGross(s) !== null);
+                    const isPeriodView = selection.type === "period";
 
                     return (
                       <div key={job.id}>
                         {showJobHeader && (
                           <div className="flex justify-between items-center px-4 py-2 bg-gray-750 border-b border-gray-700/50">
                             <span className="text-xs font-medium text-gray-300">{job.name}</span>
-                            {groupHasIncome && (
+                            {isPeriodView && groupHasIncome && (
                               <span className="text-xs text-green-400">小計 ${groupGross.toFixed(2)}</span>
                             )}
                           </div>

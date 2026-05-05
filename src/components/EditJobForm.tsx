@@ -93,6 +93,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
   const [publicHolidayHourlyRate, setPublicHolidayHourlyRate] = useState(job.publicHolidayHourlyRate?.toString() ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [errors, setErrors] = useState<{ hourlyRate?: string; payDay?: string; commissionPercentage?: string }>({});
 
   const initRef = useRef(true);
 
@@ -118,6 +119,27 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
+
+    const nextErrors: typeof errors = {};
+    if (payType === "hourly") {
+      const hr = parseFloat(hourlyRate);
+      if (!hourlyRate || isNaN(hr) || hr <= 0) nextErrors.hourlyRate = "請輸入時薪";
+    } else {
+      const cp = parseFloat(commissionPercentage);
+      if (!commissionPercentage || isNaN(cp) || cp <= 0) nextErrors.commissionPercentage = "請輸入抽成比例";
+    }
+    if (payDay === "") {
+      nextErrors.payDay = payFrequency === "monthly" ? "請輸入發薪日（幾號）" : "請選擇發薪日";
+    } else if (payFrequency === "monthly") {
+      const d = parseInt(payDay);
+      if (isNaN(d) || d < 1 || d > 31) nextErrors.payDay = "發薪日需介於 1–31";
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
+      return;
+    }
+    setErrors({});
     setSubmitting(true);
 
     const res = await fetch(`/api/jobs/${job.id}`, {
@@ -201,35 +223,37 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
 
       {payType === "hourly" && (
         <div>
-          <label className="block text-xs text-gray-400 mb-1">時薪（$）</label>
+          <label className="block text-xs text-gray-400 mb-1">時薪（$）<span className="text-red-400 ml-1">*</span></label>
           <input
             type="number"
             value={hourlyRate}
-            onChange={(e) => setHourlyRate(e.target.value)}
+            onChange={(e) => { setHourlyRate(e.target.value); if (errors.hourlyRate) setErrors((p) => ({ ...p, hourlyRate: undefined })); }}
             onFocus={(e) => e.target.select()}
             placeholder="0.00"
             min="0"
             step="0.01"
-            className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className={`block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 ${errors.hourlyRate ? "ring-2 ring-red-500" : "focus:ring-blue-500"}`}
           />
+          {errors.hourlyRate && <p className="text-[10px] text-red-400 mt-1">{errors.hourlyRate}</p>}
         </div>
       )}
 
       {payType === "commission" && (
         <>
           <div>
-            <label className="block text-xs text-gray-400 mb-1">抽成比例（%）</label>
+            <label className="block text-xs text-gray-400 mb-1">抽成比例（%）<span className="text-red-400 ml-1">*</span></label>
             <input
               type="number"
               value={commissionPercentage}
-              onChange={(e) => setCommissionPercentage(e.target.value)}
+              onChange={(e) => { setCommissionPercentage(e.target.value); if (errors.commissionPercentage) setErrors((p) => ({ ...p, commissionPercentage: undefined })); }}
               onFocus={(e) => e.target.select()}
               placeholder="10"
               min="0"
               max="100"
               step="0.1"
-              className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 ${errors.commissionPercentage ? "ring-2 ring-red-500" : "focus:ring-blue-500"}`}
             />
+            {errors.commissionPercentage && <p className="text-[10px] text-red-400 mt-1">{errors.commissionPercentage}</p>}
           </div>
           <div className="flex items-center justify-between py-1">
             <span className="text-xs text-gray-400">下班需填業績（必填）</span>
@@ -293,17 +317,18 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
 
       {showWeekdaySelector && (
         <div>
-          <label className="block text-xs text-gray-400 mb-1">發薪日（星期幾）</label>
+          <label className="block text-xs text-gray-400 mb-1">發薪日（星期幾）<span className="text-red-400 ml-1">*</span></label>
           <select
             value={payDay}
-            onChange={(e) => setPayDay(e.target.value)}
-            className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            onChange={(e) => { setPayDay(e.target.value); if (errors.payDay) setErrors((p) => ({ ...p, payDay: undefined })); }}
+            className={`block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 ${errors.payDay ? "ring-2 ring-red-500" : "focus:ring-blue-500"}`}
           >
             <option value="">選擇星期</option>
             {WEEKDAYS.map((day, i) => (
               <option key={i} value={i}>星期{day}</option>
             ))}
           </select>
+          {errors.payDay && <p className="text-[10px] text-red-400 mt-1">{errors.payDay}</p>}
         </div>
       )}
 
@@ -326,17 +351,18 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
 
       {payFrequency === "monthly" && (
         <div>
-          <label className="block text-xs text-gray-400 mb-1">發薪日（幾號）</label>
+          <label className="block text-xs text-gray-400 mb-1">發薪日（幾號）<span className="text-red-400 ml-1">*</span></label>
           <input
             type="number"
             value={payDay}
-            onChange={(e) => setPayDay(e.target.value)}
+            onChange={(e) => { setPayDay(e.target.value); if (errors.payDay) setErrors((p) => ({ ...p, payDay: undefined })); }}
             onFocus={(e) => e.target.select()}
             min="1"
             max="31"
             placeholder="15"
-            className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className={`block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 ${errors.payDay ? "ring-2 ring-red-500" : "focus:ring-blue-500"}`}
           />
+          {errors.payDay && <p className="text-[10px] text-red-400 mt-1">{errors.payDay}</p>}
         </div>
       )}
 
