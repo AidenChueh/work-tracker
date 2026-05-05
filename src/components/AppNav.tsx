@@ -1,11 +1,12 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useLocale } from "@/hooks/useLocale";
 
 const NAV_ITEMS = [
   {
     href: "/",
-    label: "打卡",
+    labelKey: "nav.clockIn",
     icon: (active: boolean) => (
       <svg className={`w-6 h-6 ${active ? "text-blue-400" : "text-gray-500"}`} fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
         <circle cx="12" cy="12" r="9" />
@@ -15,7 +16,7 @@ const NAV_ITEMS = [
   },
   {
     href: "/records",
-    label: "打卡紀錄",
+    labelKey: "nav.records",
     icon: (active: boolean) => (
       <svg className={`w-6 h-6 ${active ? "text-blue-400" : "text-gray-500"}`} fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
         <path strokeLinecap="round" d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
@@ -26,7 +27,7 @@ const NAV_ITEMS = [
   },
   {
     href: "/calendar",
-    label: "行事曆",
+    labelKey: "nav.calendar",
     icon: (active: boolean) => (
       <svg className={`w-6 h-6 ${active ? "text-blue-400" : "text-gray-500"}`} fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
         <rect x="3" y="4" width="18" height="18" rx="2" />
@@ -36,7 +37,7 @@ const NAV_ITEMS = [
   },
   {
     href: "/jobs",
-    label: "工作管理",
+    labelKey: "nav.jobs",
     icon: (active: boolean) => (
       <svg className={`w-6 h-6 ${active ? "text-blue-400" : "text-gray-500"}`} fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
         <rect x="2" y="7" width="20" height="14" rx="2" />
@@ -48,6 +49,7 @@ const NAV_ITEMS = [
 
 export function AppNav() {
   const pathname = usePathname();
+  const { t } = useLocale();
 
   return (
     <nav className="shrink-0 bg-gray-900 border-t border-gray-800 z-50">
@@ -62,7 +64,7 @@ export function AppNav() {
             >
               {item.icon(active)}
               <span className={`text-xs ${active ? "text-blue-400" : "text-gray-500"}`}>
-                {item.label}
+                {t(item.labelKey)}
               </span>
             </Link>
           );

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useDevice } from "@/hooks/useDevice";
+import { useLocale } from "@/hooks/useLocale";
 import { calcSessionIncome, calcSessionGross } from "@/lib/income";
 
 type OvertimeTier = { afterHours: number; rate: number };
@@ -84,7 +85,7 @@ function periodKeyForSession(session: WorkSession): string {
   return `${d.getFullYear()}-${d.getMonth() + 1}`;
 }
 
-function periodLabel(key: string, job: Job): string {
+function periodLabel(key: string, job: Job, locale: "zh" | "en"): string {
   if (job.payFrequency === "weekly" && job.payDay != null) {
     const payday = new Date(key);
     const fmt = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`;
@@ -105,21 +106,15 @@ function periodLabel(key: string, job: Job): string {
     return `${fmt(periodStart)} – ${fmt(periodEnd)}`;
   }
   const [y, m] = key.split("-");
-  return `${y}年${m}月`;
-}
-
-function periodSubLabel(key: string, job: Job): string | null {
-  if (job.payFrequency === "weekly" && job.payDay != null) {
-    const payday = new Date(key);
-    return `發薪日 ${payday.getMonth() + 1}/${payday.getDate()}`;
-  }
-  return null;
+  const monthsEn = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return locale === "en" ? `${monthsEn[parseInt(m) - 1]} ${y}` : `${y}年${m}月`;
 }
 
 type FilterPeriod = "all" | "week" | "month";
 
 export default function RecordsPage() {
   const { deviceId, loaded } = useDevice();
+  const { t, locale } = useLocale();
   const [sessions, setSessions] = useState<WorkSession[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
@@ -281,7 +276,7 @@ export default function RecordsPage() {
 
   async function handleDelete(id: string) {
     if (!deviceId) return;
-    if (!window.confirm("確定要刪除這筆紀錄嗎？")) return;
+    if (!window.confirm(t("records.deleteConfirm"))) return;
     setSessions((prev) => prev.filter((s) => s.id !== id));
     await fetch(`/api/sessions/${id}`, {
       method: "DELETE",
@@ -292,7 +287,7 @@ export default function RecordsPage() {
   if (!loaded || loading) {
     return (
       <div className="flex items-center justify-center h-64 bg-gray-950">
-        <div className="text-white">載入中...</div>
+        <div className="text-white">{t("common.loading")}</div>
       </div>
     );
   }
@@ -304,34 +299,34 @@ export default function RecordsPage() {
       <div className="max-w-md mx-auto px-4 py-6">
 
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-lg font-semibold">打卡紀錄</h1>
+          <h1 className="text-lg font-semibold">{t("records.title")}</h1>
           <button
             onClick={() => setShowAddForm((v) => !v)}
             className="text-sm px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white transition-colors"
           >
-            {showAddForm ? "取消" : "+ 新增"}
+            {showAddForm ? t("common.cancel") : t("records.addBtn")}
           </button>
         </div>
 
         {showAddForm && (
           <form onSubmit={handleAdd} className="bg-gray-800 rounded-2xl p-3 sm:p-4 mb-4 space-y-3">
-            <p className="text-sm font-medium text-gray-300">新增打卡紀錄</p>
+            <p className="text-sm font-medium text-gray-300">{t("records.formTitle")}</p>
             <div>
-              <label className="text-xs text-gray-400 block mb-1">工作</label>
+              <label className="text-xs text-gray-400 block mb-1">{t("records.work")}</label>
               <select
                 value={addJobId}
                 onChange={(e) => setAddJobId(e.target.value)}
                 required
                 className="block w-full max-w-full min-w-0 box-border bg-gray-700 rounded-xl px-3 py-2 text-sm text-white"
               >
-                <option value="">選擇工作...</option>
+                <option value="">{t("records.selectWork")}</option>
                 {jobs.map((j) => (
                   <option key={j.id} value={j.id}>{j.name}</option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="text-xs text-gray-400 block mb-1">日期</label>
+              <label className="text-xs text-gray-400 block mb-1">{t("records.date")}</label>
               <input
                 type="date"
                 value={addDate}
@@ -342,7 +337,7 @@ export default function RecordsPage() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="min-w-0">
-                <label className="text-xs text-gray-400 block mb-1">上班時間</label>
+                <label className="text-xs text-gray-400 block mb-1">{t("records.startTime")}</label>
                 <input
                   type="time"
                   value={addStart}
@@ -352,7 +347,7 @@ export default function RecordsPage() {
                 />
               </div>
               <div className="min-w-0">
-                <label className="text-xs text-gray-400 block mb-1">下班時間</label>
+                <label className="text-xs text-gray-400 block mb-1">{t("records.endTime")}</label>
                 <input
                   type="time"
                   value={addEnd}
@@ -365,10 +360,10 @@ export default function RecordsPage() {
             {isAddCommission && (
               <div>
                 <label className="text-xs text-gray-400 block mb-1">
-                  今日業績
+                  {t("records.todayRevenue")}
                   {selectedAddJob?.commissionRequired
-                    ? <span className="text-red-400 ml-1">（必填）</span>
-                    : <span className="text-gray-500 ml-1">（選填）</span>
+                    ? <span className="text-red-400 ml-1">{t("common.required")}</span>
+                    : <span className="text-gray-500 ml-1">{t("common.optional")}</span>
                   }
                 </label>
                 <div className="relative">
@@ -393,14 +388,14 @@ export default function RecordsPage() {
                 onClick={() => setShowAddForm(false)}
                 className="flex-1 py-2 rounded-xl bg-gray-700 hover:bg-gray-600 text-sm font-medium transition-colors"
               >
-                取消
+                {t("common.cancel")}
               </button>
               <button
                 type="submit"
                 disabled={addSubmitting}
                 className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-sm font-medium transition-colors disabled:opacity-50"
               >
-                {addSubmitting ? "儲存中..." : "儲存"}
+                {addSubmitting ? t("common.saving") : t("common.save")}
               </button>
             </div>
           </form>
@@ -417,7 +412,7 @@ export default function RecordsPage() {
                     filterJobId === "" ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"
                   }`}
                 >
-                  全部
+                  {t("records.filterAll")}
                 </button>
                 {jobs.map((j) => (
                   <button
@@ -440,7 +435,7 @@ export default function RecordsPage() {
                       filterPeriod === period ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"
                     }`}
                   >
-                    {period === "all" ? "全部" : period === "week" ? "本週" : "本月"}
+                    {period === "all" ? t("records.filterAll") : period === "week" ? t("records.filterWeek") : t("records.filterMonth")}
                   </button>
                 ))}
               </div>
@@ -448,7 +443,7 @@ export default function RecordsPage() {
 
             {jobsWithSessions.length === 0 ? (
               <div className="flex items-center justify-center py-20">
-                <p className="text-gray-500 text-sm">沒有符合的打卡紀錄</p>
+                <p className="text-gray-500 text-sm">{t("records.empty")}</p>
               </div>
             ) : (
               jobsWithSessions.map((job) => {
@@ -467,8 +462,10 @@ export default function RecordsPage() {
                       const periodSessions = periodMap.get(periodKey)!.sort(
                         (a, b) => new Date(b.clockIn).getTime() - new Date(a.clockIn).getTime()
                       );
-                      const label = periodLabel(periodKey, job);
-                      const subLabel = periodSubLabel(periodKey, job);
+                      const label = periodLabel(periodKey, job, locale);
+                      const subLabel = job.payFrequency === "weekly" && job.payDay != null
+                        ? t("records.payDayLabel", { date: `${new Date(periodKey).getMonth() + 1}/${new Date(periodKey).getDate()}` })
+                        : null;
                       const periodGross = periodSessions.reduce((sum, s) => sum + (calcSessionGross(s) ?? 0), 0);
                       const periodNet = periodSessions.reduce((sum, s) => sum + (calcSessionIncome(s, taxRate) ?? 0), 0);
                       const hasTax = taxRate > 0 && periodSessions.some((s) => s.job.taxEnabled);
@@ -487,7 +484,7 @@ export default function RecordsPage() {
                               <div className="text-right">
                                 {hasTax ? (
                                   <>
-                                    <div className="text-xs text-gray-500">稅前 ${periodGross.toFixed(2)}</div>
+                                    <div className="text-xs text-gray-500">{t("records.preTax", { amount: periodGross.toFixed(2) })}</div>
                                     <div className="text-sm font-semibold text-green-400">${periodNet.toFixed(2)}</div>
                                   </>
                                 ) : (
@@ -509,7 +506,7 @@ export default function RecordsPage() {
                                     className="bg-gray-700 rounded-xl p-2.5 sm:p-3 space-y-2"
                                   >
                                     <div>
-                                      <label className="text-xs text-gray-400 block mb-1">上班時間</label>
+                                      <label className="text-xs text-gray-400 block mb-1">{t("records.startTime")}</label>
                                       <div className="grid grid-cols-2 gap-1.5">
                                         <div className="min-w-0">
                                           <input
@@ -532,7 +529,7 @@ export default function RecordsPage() {
                                       </div>
                                     </div>
                                     <div>
-                                      <label className="text-xs text-gray-400 block mb-1">下班時間</label>
+                                      <label className="text-xs text-gray-400 block mb-1">{t("records.endTime")}</label>
                                       <div className="grid grid-cols-2 gap-1.5">
                                         <div className="min-w-0">
                                           <input
@@ -560,14 +557,14 @@ export default function RecordsPage() {
                                         onClick={() => setEditingId(null)}
                                         className="flex-1 py-2 rounded-lg bg-gray-600 hover:bg-gray-500 text-xs font-medium transition-colors"
                                       >
-                                        取消
+                                        {t("common.cancel")}
                                       </button>
                                       <button
                                         type="submit"
                                         disabled={editSubmitting}
                                         className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-medium transition-colors disabled:opacity-50"
                                       >
-                                        {editSubmitting ? "儲存中..." : "儲存"}
+                                        {editSubmitting ? t("common.saving") : t("common.save")}
                                       </button>
                                     </div>
                                   </form>
@@ -578,13 +575,13 @@ export default function RecordsPage() {
                                 <div key={s.id} className="bg-gray-900 rounded-xl px-3 py-2.5">
                                   <div className="flex items-center justify-between mb-2">
                                     <span className="text-sm text-white">
-                                      {fmtDate(s.clockIn)} {fmtTime(s.clockIn)} – {s.clockOut ? fmtTime(s.clockOut) : "進行中"}
+                                      {fmtDate(s.clockIn)} {fmtTime(s.clockIn)} – {s.clockOut ? fmtTime(s.clockOut) : t("records.inProgress")}
                                     </span>
                                     <div className="text-right">
                                       {gross !== null ? (
                                         <span className="text-sm font-semibold text-green-400">${gross.toFixed(2)}</span>
                                       ) : (
-                                        <span className="text-xs text-gray-500">抽成制</span>
+                                        <span className="text-xs text-gray-500">{t("records.commissionLabel")}</span>
                                       )}
                                     </div>
                                   </div>
@@ -593,13 +590,13 @@ export default function RecordsPage() {
                                       onClick={() => startEdit(s)}
                                       className="text-sm text-blue-400 hover:text-blue-300 transition-colors px-3 py-1.5 -ml-2 rounded-lg hover:bg-blue-400/10"
                                     >
-                                      編輯
+                                      {t("common.edit")}
                                     </button>
                                     <button
                                       onClick={() => handleDelete(s.id)}
                                       className="text-sm text-red-400 hover:text-red-300 transition-colors px-3 py-1.5 -mr-2 rounded-lg hover:bg-red-400/10"
                                     >
-                                      刪除
+                                      {t("common.delete")}
                                     </button>
                                   </div>
                                 </div>

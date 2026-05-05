@@ -3,7 +3,9 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { OnboardingForm } from "@/components/OnboardingForm";
+import { LocaleToggle } from "@/components/LocaleToggle";
 import { useDevice } from "@/hooks/useDevice";
+import { useLocale } from "@/hooks/useLocale";
 import { calcSessionGross } from "@/lib/income";
 import type { OvertimeTier } from "@/lib/income";
 
@@ -70,7 +72,8 @@ function todayWithTime(time: string): Date {
 }
 
 export default function Home() {
-  const { deviceId, userName, loaded } = useDevice();
+  const { deviceId, userName, loaded, setUserName } = useDevice();
+  const { t } = useLocale();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string>("");
   const [activeSession, setActiveSession] = useState<WorkSession | null>(null);
@@ -81,6 +84,8 @@ export default function Home() {
   const [isPublicHoliday, setIsPublicHoliday] = useState(false);
   const [submittingFixed, setSubmittingFixed] = useState(false);
   const [fixedFeedback, setFixedFeedback] = useState("");
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
 
   const fetchJobs = useCallback(async (id: string) => {
     const res = await fetch("/api/jobs", { headers: { "x-device-id": id } });
@@ -175,14 +180,31 @@ export default function Home() {
       body: JSON.stringify(body),
     });
     if (res.ok) {
-      setFixedFeedback(`已新增 ${selectedJob.name} 今日打卡：${selectedJob.fixedClockIn} – ${selectedJob.fixedClockOut}`);
+      setFixedFeedback(
+        t("home.fixedAdded", {
+          name: selectedJob.name,
+          start: selectedJob.fixedClockIn,
+          end: selectedJob.fixedClockOut,
+        })
+      );
       setDailyRevenue("");
       setIsPublicHoliday(false);
       await fetchRecentSessions(deviceId);
     } else {
-      setFixedFeedback("新增失敗，請稍後再試");
+      setFixedFeedback(t("home.addFailed"));
     }
     setSubmittingFixed(false);
+  };
+
+  const startEditName = () => {
+    setNameDraft(userName ?? "");
+    setEditingName(true);
+  };
+  const saveName = () => {
+    const v = nameDraft.trim();
+    if (!v) return;
+    setUserName(v);
+    setEditingName(false);
   };
 
   if (!loaded) return null;
@@ -201,7 +223,7 @@ export default function Home() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full bg-gray-950">
-        <div className="text-white">載入中...</div>
+        <div className="text-white">{t("common.loading")}</div>
       </div>
     );
   }
@@ -214,17 +236,62 @@ export default function Home() {
   return (
     <main className="bg-gray-950 text-white">
       <div className="max-w-md mx-auto px-4 py-8">
-        <h1 className="text-xl font-semibold text-center mb-6">歡迎，{userName}</h1>
+        {/* Header: welcome + edit name + locale toggle */}
+        <div className="flex items-center justify-between gap-2 mb-6">
+          {editingName ? (
+            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+              <input
+                type="text"
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") saveName(); if (e.key === "Escape") setEditingName(false); }}
+                autoFocus
+                className="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
+              />
+              <button
+                type="button"
+                onClick={saveName}
+                disabled={!nameDraft.trim()}
+                className="px-2.5 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 disabled:opacity-40"
+              >
+                {t("common.save")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditingName(false)}
+                className="px-2.5 py-1.5 rounded-lg bg-gray-700 text-gray-300 text-xs hover:bg-gray-600"
+              >
+                {t("common.cancel")}
+              </button>
+            </div>
+          ) : (
+            <h1 className="text-xl font-semibold flex items-center gap-1.5 min-w-0">
+              <span className="truncate">{t("home.welcome", { name: userName })}</span>
+              <button
+                type="button"
+                onClick={startEditName}
+                aria-label={t("home.editName")}
+                title={t("home.editName")}
+                className="shrink-0 p-1 text-gray-500 hover:text-white transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.687a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897l11.932-11.932z" />
+                </svg>
+              </button>
+            </h1>
+          )}
+          {!editingName && <LocaleToggle />}
+        </div>
 
         {/* Active session timer */}
         {activeSession && (
           <div className="bg-green-900/40 border border-green-700 rounded-2xl p-6 mb-4 text-center">
             <p className="text-green-400 text-sm uppercase tracking-wide mb-1">
-              打卡中 — {activeSession.job.name}
+              {t("home.activeWith", { name: activeSession.job.name })}
             </p>
             <p className="text-5xl font-mono font-bold">{formatDuration(elapsed)}</p>
             <p className="text-gray-400 text-sm mt-2">
-              自 {fmtTime(activeSession.clockIn)}
+              {t("home.since", { time: fmtTime(activeSession.clockIn) })}
             </p>
           </div>
         )}
@@ -234,7 +301,7 @@ export default function Home() {
           <div className="mb-4">
             {jobs.length > 0 ? (
               <>
-                <label className="block text-xs text-gray-500 uppercase tracking-wide mb-2">選擇工作</label>
+                <label className="block text-xs text-gray-500 uppercase tracking-wide mb-2">{t("home.selectJob")}</label>
                 <select
                   value={selectedJobId}
                   onChange={(e) => { setSelectedJobId(e.target.value); setFixedFeedback(""); }}
@@ -243,24 +310,24 @@ export default function Home() {
                   {jobs.map((job) => (
                     <option key={job.id} value={job.id}>
                       {job.name}{job.hourlyRate != null ? ` · $${job.hourlyRate}/hr` : ""}
-                      {job.scheduleType === "fixed" ? " · 固定" : ""}
+                      {job.scheduleType === "fixed" ? ` · ${t("home.fixedTag")}` : ""}
                     </option>
                   ))}
                 </select>
                 {isFixedSchedule && selectedJob && (
                   <p className="text-xs text-gray-500 mt-2">
-                    固定班表：{selectedJob.fixedClockIn} – {selectedJob.fixedClockOut}
+                    {t("home.fixedScheduleHint", { start: selectedJob.fixedClockIn ?? "", end: selectedJob.fixedClockOut ?? "" })}
                   </p>
                 )}
               </>
             ) : (
               <div className="text-center py-4">
-                <p className="text-gray-400 mb-3">還沒有工作</p>
+                <p className="text-gray-400 mb-3">{t("home.noJobs")}</p>
                 <Link
                   href="/jobs"
                   className="inline-block bg-blue-600 hover:bg-blue-700 text-white text-sm px-5 py-2.5 rounded-xl transition-colors"
                 >
-                  前往工作管理新增
+                  {t("home.goToJobs")}
                 </Link>
               </div>
             )}
@@ -271,10 +338,10 @@ export default function Home() {
         {((activeSession && isCommissionJob) || (!activeSession && isFixedSchedule && fixedIsCommission)) && (
           <div className="bg-gray-800 rounded-2xl p-4 mb-4">
             <label className="block text-sm text-gray-400 mb-1.5">
-              今日業績
+              {t("home.todayRevenue")}
               {(activeSession?.job.commissionRequired ?? selectedJob?.commissionRequired)
-                ? <span className="text-red-400 ml-1">（必填）</span>
-                : <span className="text-gray-500 ml-1">（選填）</span>
+                ? <span className="text-red-400 ml-1">{t("common.required")}</span>
+                : <span className="text-gray-500 ml-1">{t("common.optional")}</span>
               }
             </label>
             <div className="relative">
@@ -297,7 +364,7 @@ export default function Home() {
         {((activeSession && activeSession.job.penaltyRatesEnabled) ||
           (!activeSession && isFixedSchedule && selectedJob?.penaltyRatesEnabled)) && (
           <div className="flex items-center justify-between bg-gray-800 rounded-2xl px-4 py-3 mb-4">
-            <span className="text-sm text-gray-300">國定假日</span>
+            <span className="text-sm text-gray-300">{t("home.publicHoliday")}</span>
             <button
               type="button"
               onClick={() => setIsPublicHoliday((v) => !v)}
@@ -316,7 +383,7 @@ export default function Home() {
               disabled={fixedDisabled}
               className="w-full py-5 rounded-2xl text-xl font-bold transition-all mt-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {submittingFixed ? "新增中..." : "新增今日打卡"}
+              {submittingFixed ? t("common.adding") : t("home.fixedAddBtn")}
             </button>
             {fixedFeedback && (
               <p className="text-xs text-center text-green-400 mt-2">{fixedFeedback}</p>
@@ -335,14 +402,14 @@ export default function Home() {
                 : "bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
             }`}
           >
-            {activeSession ? "打卡下班" : "打卡上班"}
+            {activeSession ? t("home.clockOut") : t("home.clockIn")}
           </button>
         )}
 
         {/* Recent sessions */}
         {recentSessions.length > 0 && !activeSession && (
           <div className="mt-8">
-            <h2 className="text-gray-400 text-xs uppercase tracking-wide mb-3">最近紀錄</h2>
+            <h2 className="text-gray-400 text-xs uppercase tracking-wide mb-3">{t("home.recent")}</h2>
             <div className="space-y-1">
               {recentSessions.map((session) => {
                 const duration = session.clockOut

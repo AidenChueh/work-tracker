@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { AddJobForm } from "@/components/AddJobForm";
 import { EditJobForm } from "@/components/EditJobForm";
 import { useDevice } from "@/hooks/useDevice";
+import { useLocale } from "@/hooks/useLocale";
 
 type Job = {
   id: string;
@@ -31,15 +32,9 @@ type Job = {
   createdAt: string;
 };
 
-const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
-const FREQ_LABELS: Record<string, string> = {
-  weekly: "每週",
-  bi_weekly: "每兩週",
-  monthly: "每月",
-};
-
 export default function JobsPage() {
   const { deviceId, loaded } = useDevice();
+  const { t } = useLocale();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddJob, setShowAddJob] = useState(false);
@@ -71,7 +66,7 @@ export default function JobsPage() {
   if (!loaded || loading) {
     return (
       <div className="flex items-center justify-center h-full bg-gray-950">
-        <div className="text-white">載入中...</div>
+        <div className="text-white">{t("common.loading")}</div>
       </div>
     );
   }
@@ -80,9 +75,9 @@ export default function JobsPage() {
     <main className="bg-gray-950 text-white">
       <div className="max-w-md mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-xl font-semibold">工作管理</h1>
+          <h1 className="text-xl font-semibold">{t("jobs.title")}</h1>
           <div className="flex items-center gap-1.5">
-            <span className="text-xs text-gray-500">稅率</span>
+            <span className="text-xs text-gray-500">{t("jobs.taxRate")}</span>
             <div className="relative">
               <input
                 type="number"
@@ -103,12 +98,12 @@ export default function JobsPage() {
 
         {/* Add job button */}
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">工作列表</h2>
+          <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">{t("jobs.list")}</h2>
           <button
             onClick={() => { setShowAddJob((v) => !v); setEditingJobId(null); }}
             className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-xl transition-colors"
           >
-            + 新增工作
+            {t("jobs.addBtn")}
           </button>
         </div>
 
@@ -124,7 +119,7 @@ export default function JobsPage() {
         )}
 
         {jobs.length === 0 && !showAddJob && (
-          <p className="text-gray-400 text-center mt-8">還沒有工作，點上方「新增工作」開始</p>
+          <p className="text-gray-400 text-center mt-8">{t("jobs.empty")}</p>
         )}
 
         <div className="space-y-1">
@@ -133,12 +128,12 @@ export default function JobsPage() {
             const payInfo = job.hourlyRate != null
               ? `$${job.hourlyRate}/hr`
               : job.commissionPercentage != null
-              ? `抽成 ${(job.commissionPercentage * 100).toFixed(0)}%`
-              : "未設定";
+              ? t("jobs.commission", { pct: (job.commissionPercentage * 100).toFixed(0) })
+              : t("jobs.notSet");
             const payDayLabel = job.payFrequency === "weekly" && job.payDay != null
-              ? `星期${WEEKDAYS[job.payDay]}`
+              ? t("jobs.weeklyOn", { day: t(`wd.${job.payDay}`) })
               : job.payFrequency === "monthly" && job.payDay != null
-              ? `每月${job.payDay}號`
+              ? t("jobs.monthlyOn", { day: job.payDay })
               : "";
 
             return (
@@ -149,13 +144,13 @@ export default function JobsPage() {
                       <p className="font-medium">{job.name}</p>
                       {job.taxEnabled && (
                         <span className="text-[10px] bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-1.5 py-0.5 rounded-md">
-                          扣稅
+                          {t("jobs.taxBadge")}
                         </span>
                       )}
                     </div>
                     <p className="text-gray-400 text-sm">
-                      {payInfo} · {FREQ_LABELS[job.payFrequency] ?? job.payFrequency}
-                      {payDayLabel && ` · 發薪日：${payDayLabel}`}
+                      {payInfo} · {t(`jobs.freq.${job.payFrequency}`)}
+                      {payDayLabel && ` · ${t("jobs.payDayLabel", { day: payDayLabel })}`}
                     </p>
                   </div>
                   <button
@@ -165,7 +160,7 @@ export default function JobsPage() {
                     }}
                     className="text-gray-400 hover:text-white text-sm px-3 py-1.5 bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors"
                   >
-                    {isEditing ? "關閉" : "編輯"}
+                    {isEditing ? t("common.close") : t("common.edit")}
                   </button>
                 </div>
                 {isEditing && (

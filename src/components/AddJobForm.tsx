@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useLocale } from "@/hooks/useLocale";
 
 type OvertimeTier = { afterHours: string; rate: string };
 
@@ -36,8 +37,6 @@ type Props = {
   onCancel?: () => void;
 };
 
-const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
-
 function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
   return (
     <button
@@ -58,6 +57,7 @@ function fmtCalc(base: string, mult: string): string {
 }
 
 export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
+  const { t } = useLocale();
   const [name, setName] = useState("");
   const [payType, setPayType] = useState<"hourly" | "commission">("hourly");
   const [hourlyRate, setHourlyRate] = useState("");
@@ -106,16 +106,16 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
     const nextErrors: typeof errors = {};
     if (payType === "hourly") {
       const hr = parseFloat(hourlyRate);
-      if (!hourlyRate || isNaN(hr) || hr <= 0) nextErrors.hourlyRate = "請輸入時薪";
+      if (!hourlyRate || isNaN(hr) || hr <= 0) nextErrors.hourlyRate = t("form.errHourly");
     } else {
       const cp = parseFloat(commissionPercentage);
-      if (!commissionPercentage || isNaN(cp) || cp <= 0) nextErrors.commissionPercentage = "請輸入抽成比例";
+      if (!commissionPercentage || isNaN(cp) || cp <= 0) nextErrors.commissionPercentage = t("form.errCommission");
     }
     if (payDay === "") {
-      nextErrors.payDay = payFrequency === "monthly" ? "請輸入發薪日（幾號）" : "請選擇發薪日";
+      nextErrors.payDay = payFrequency === "monthly" ? t("form.errPayDayMonth") : t("form.errPayDayWeek");
     } else if (payFrequency === "monthly") {
       const d = parseInt(payDay);
-      if (isNaN(d) || d < 1 || d > 31) nextErrors.payDay = "發薪日需介於 1–31";
+      if (isNaN(d) || d < 1 || d > 31) nextErrors.payDay = t("form.errPayDayRange");
     }
 
     if (Object.keys(nextErrors).length > 0) {
@@ -167,22 +167,22 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="bg-gray-800 rounded-2xl p-5 mb-4 space-y-4">
-      <h3 className="font-semibold text-lg">新增工作</h3>
+      <h3 className="font-semibold text-lg">{t("form.addTitle")}</h3>
 
       <div>
-        <label className="block text-sm text-gray-400 mb-1">工作名稱</label>
+        <label className="block text-sm text-gray-400 mb-1">{t("form.name")}</label>
         <input
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="例如：兼職收銀員"
+          placeholder={t("form.namePlaceholder")}
           className="block w-full max-w-full min-w-0 bg-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
           required
         />
       </div>
 
       <div>
-        <label className="block text-sm text-gray-400 mb-2">薪資類型</label>
+        <label className="block text-sm text-gray-400 mb-2">{t("form.payType")}</label>
         <div className="flex gap-2">
           {(["hourly", "commission"] as const).map((type) => (
             <button
@@ -193,7 +193,7 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
                 payType === type ? "bg-blue-600 text-white" : "bg-gray-700 text-gray-300 hover:bg-gray-600"
               }`}
             >
-              {type === "hourly" ? "時薪" : "抽成"}
+              {type === "hourly" ? t("form.hourly") : t("form.commission")}
             </button>
           ))}
         </div>
@@ -201,7 +201,7 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
 
       {payType === "hourly" && (
         <div>
-          <label className="block text-sm text-gray-400 mb-1">時薪（$）<span className="text-red-400 ml-1">*</span></label>
+          <label className="block text-sm text-gray-400 mb-1">{t("form.hourlyRate")}<span className="text-red-400 ml-1">*</span></label>
           <input
             type="number"
             value={hourlyRate}
@@ -219,7 +219,7 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
       {payType === "commission" && (
         <>
           <div>
-            <label className="block text-sm text-gray-400 mb-1">抽成比例（%）<span className="text-red-400 ml-1">*</span></label>
+            <label className="block text-sm text-gray-400 mb-1">{t("form.commissionPct")}<span className="text-red-400 ml-1">*</span></label>
             <input
               type="number"
               value={commissionPercentage}
@@ -234,14 +234,14 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
             {errors.commissionPercentage && <p className="text-xs text-red-400 mt-1">{errors.commissionPercentage}</p>}
           </div>
           <div className="flex items-center justify-between py-1">
-            <span className="text-sm text-gray-400">下班需填業績（必填）</span>
+            <span className="text-sm text-gray-400">{t("form.commissionRequired")}</span>
             <Toggle checked={commissionRequired} onChange={() => setCommissionRequired((v) => !v)} />
           </div>
         </>
       )}
 
       <div>
-        <label className="block text-sm text-gray-400 mb-2">班表類型</label>
+        <label className="block text-sm text-gray-400 mb-2">{t("form.scheduleType")}</label>
         <div className="flex gap-2">
           {(["flexible", "fixed"] as const).map((type) => (
             <button
@@ -252,14 +252,14 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
                 scheduleType === type ? "bg-blue-600 text-white" : "bg-gray-700 text-gray-300 hover:bg-gray-600"
               }`}
             >
-              {type === "flexible" ? "彈性班表" : "固定班表"}
+              {type === "flexible" ? t("form.flexible") : t("form.fixed")}
             </button>
           ))}
         </div>
         {scheduleType === "fixed" && (
           <div className="grid grid-cols-2 gap-2 mt-3">
             <div className="min-w-0">
-              <label className="block text-xs text-gray-400 mb-1">固定上班</label>
+              <label className="block text-xs text-gray-400 mb-1">{t("form.fixedClockIn")}</label>
               <input
                 type="time"
                 value={fixedClockIn}
@@ -268,7 +268,7 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
               />
             </div>
             <div className="min-w-0">
-              <label className="block text-xs text-gray-400 mb-1">固定下班</label>
+              <label className="block text-xs text-gray-400 mb-1">{t("form.fixedClockOut")}</label>
               <input
                 type="time"
                 value={fixedClockOut}
@@ -281,29 +281,29 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
       </div>
 
       <div>
-        <label className="block text-sm text-gray-400 mb-1">發薪頻率</label>
+        <label className="block text-sm text-gray-400 mb-1">{t("form.payFreq")}</label>
         <select
           value={payFrequency}
           onChange={(e) => { setPayFrequency(e.target.value); setPayDay(""); setPayWeekStart(""); }}
           className="block w-full max-w-full min-w-0 bg-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          <option value="weekly">每週</option>
-          <option value="bi_weekly">每兩週</option>
-          <option value="monthly">每月</option>
+          <option value="weekly">{t("form.weekly")}</option>
+          <option value="bi_weekly">{t("form.biweekly")}</option>
+          <option value="monthly">{t("form.monthly")}</option>
         </select>
       </div>
 
       {showWeekdaySelector && (
         <div>
-          <label className="block text-sm text-gray-400 mb-1">發薪日（星期幾）<span className="text-red-400 ml-1">*</span></label>
+          <label className="block text-sm text-gray-400 mb-1">{t("form.payDayWeek")}<span className="text-red-400 ml-1">*</span></label>
           <select
             value={payDay}
             onChange={(e) => { setPayDay(e.target.value); if (errors.payDay) setErrors((p) => ({ ...p, payDay: undefined })); }}
             className={`block w-full max-w-full min-w-0 bg-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 ${errors.payDay ? "ring-2 ring-red-500" : "focus:ring-blue-500"}`}
           >
-            <option value="">選擇星期</option>
-            {WEEKDAYS.map((day, i) => (
-              <option key={i} value={i}>星期{day}</option>
+            <option value="">{t("form.selectWeekday")}</option>
+            {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+              <option key={i} value={i}>{t(`wd.${i}`)}</option>
             ))}
           </select>
           {errors.payDay && <p className="text-xs text-red-400 mt-1">{errors.payDay}</p>}
@@ -312,24 +312,24 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
 
       {showWeekdaySelector && (
         <div>
-          <label className="block text-sm text-gray-400 mb-1">計薪週起始日（選填）</label>
+          <label className="block text-sm text-gray-400 mb-1">{t("form.weekStart")}</label>
           <select
             value={payWeekStart}
             onChange={(e) => setPayWeekStart(e.target.value)}
             className="block w-full max-w-full min-w-0 bg-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value="">預設（依發薪日往前推算）</option>
-            {WEEKDAYS.map((day, i) => (
-              <option key={i} value={i}>星期{day}</option>
+            <option value="">{t("form.weekStartDefault")}</option>
+            {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+              <option key={i} value={i}>{t(`wd.${i}`)}</option>
             ))}
           </select>
-          <p className="text-xs text-gray-500 mt-1">例如：設定星期四，計薪週為「星期四到星期三」</p>
+          <p className="text-xs text-gray-500 mt-1">{t("form.weekStartHint")}</p>
         </div>
       )}
 
       {payFrequency === "monthly" && (
         <div>
-          <label className="block text-sm text-gray-400 mb-1">發薪日（幾號）<span className="text-red-400 ml-1">*</span></label>
+          <label className="block text-sm text-gray-400 mb-1">{t("form.payDayMonth")}<span className="text-red-400 ml-1">*</span></label>
           <input
             type="number"
             value={payDay}
@@ -349,13 +349,13 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
           {/* Overtime tiers */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-gray-400">加班費設定</span>
+              <span className="text-sm text-gray-400">{t("form.overtime")}</span>
               <button
                 type="button"
                 onClick={addTier}
                 className="text-xs text-blue-400 hover:text-blue-300 px-2 py-1 bg-blue-500/10 rounded-lg transition-colors"
               >
-                + 新增區間
+                {t("form.addTier")}
               </button>
             </div>
             {overtimeTiers.length > 0 && (
@@ -372,7 +372,7 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
                         step="0.5"
                         className="block w-full max-w-full min-w-0 bg-gray-700 rounded-xl px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
-                      <span className="text-[10px] text-gray-500 ml-1">小時後</span>
+                      <span className="text-[10px] text-gray-500 ml-1">{t("form.hoursAfter")}</span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <input
@@ -384,7 +384,7 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
                         step="0.01"
                         className="block w-full max-w-full min-w-0 bg-gray-700 rounded-xl px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
-                      <span className="text-[10px] text-gray-500 ml-1">$/hr</span>
+                      <span className="text-[10px] text-gray-500 ml-1">{t("form.perHour")}</span>
                     </div>
                     <button
                       type="button"
@@ -401,13 +401,13 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
 
           {/* Break */}
           <div className="flex items-center justify-between py-2">
-            <span className="text-sm text-gray-400">有休息時間</span>
+            <span className="text-sm text-gray-400">{t("form.hasBreak")}</span>
             <Toggle checked={hasBreak} onChange={() => setHasBreak((v) => !v)} />
           </div>
           {hasBreak && (
             <div className="flex gap-2">
               <div className="flex-1 min-w-0">
-                <label className="block text-sm text-gray-400 mb-1">休息（分鐘）</label>
+                <label className="block text-sm text-gray-400 mb-1">{t("form.breakMinutes")}</label>
                 <input
                   type="number"
                   value={breakDuration}
@@ -420,13 +420,13 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
                 />
               </div>
               <div className="flex-1 min-w-0">
-                <label className="block text-sm text-gray-400 mb-1">休息時薪（選填）</label>
+                <label className="block text-sm text-gray-400 mb-1">{t("form.breakRate")}</label>
                 <input
                   type="number"
                   value={breakRate}
                   onChange={(e) => setBreakRate(e.target.value)}
                   onFocus={(e) => e.target.select()}
-                  placeholder="不填為無薪"
+                  placeholder={t("form.breakRatePlaceholder")}
                   min="0"
                   step="0.01"
                   className="block w-full max-w-full min-w-0 bg-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -439,18 +439,18 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
           <div className="border-t border-gray-700/50 pt-4">
             <div className="flex items-center justify-between mb-2">
               <div>
-                <span className="text-sm text-gray-300">澳洲 Penalty Rates</span>
-                <p className="text-xs text-gray-500 mt-0.5">假日薪資加乘（週六、週日、國定假日）</p>
+                <span className="text-sm text-gray-300">{t("form.penaltyTitle")}</span>
+                <p className="text-xs text-gray-500 mt-0.5">{t("form.penaltyDesc")}</p>
               </div>
               <Toggle checked={penaltyRatesEnabled} onChange={() => setPenaltyRatesEnabled((v) => !v)} />
             </div>
             {penaltyRatesEnabled && (
               <div className="space-y-3 mt-3 bg-gray-700/40 rounded-xl p-3">
-                <p className="text-xs text-gray-500">時薪會依倍率自動計算，可手動修改</p>
+                <p className="text-xs text-gray-500">{t("form.penaltyAutoHint")}</p>
                 {[
-                  { label: "週六", rateVal: saturdayRate, rateSet: setSaturdayRate, hourlyVal: saturdayHourlyRate, hourlySet: setSaturdayHourlyRate, def: "1.5" },
-                  { label: "週日", rateVal: sundayRate, rateSet: setSundayRate, hourlyVal: sundayHourlyRate, hourlySet: setSundayHourlyRate, def: "2.0" },
-                  { label: "國定假日", rateVal: publicHolidayRate, rateSet: setPublicHolidayRate, hourlyVal: publicHolidayHourlyRate, hourlySet: setPublicHolidayHourlyRate, def: "2.5" },
+                  { label: t("form.saturday"), rateVal: saturdayRate, rateSet: setSaturdayRate, hourlyVal: saturdayHourlyRate, hourlySet: setSaturdayHourlyRate, def: "1.5" },
+                  { label: t("form.sunday"), rateVal: sundayRate, rateSet: setSundayRate, hourlyVal: sundayHourlyRate, hourlySet: setSundayHourlyRate, def: "2.0" },
+                  { label: t("form.holiday"), rateVal: publicHolidayRate, rateSet: setPublicHolidayRate, hourlyVal: publicHolidayHourlyRate, hourlySet: setPublicHolidayHourlyRate, def: "2.5" },
                 ].map(({ label, rateVal, rateSet, hourlyVal, hourlySet, def }) => (
                   <div key={label}>
                     <span className="text-sm text-gray-300 block mb-1.5">{label}</span>
@@ -466,7 +466,7 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
                           step="0.1"
                           className="block w-full max-w-full min-w-0 bg-gray-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
-                        <span className="text-sm text-gray-500 shrink-0">× 倍</span>
+                        <span className="text-sm text-gray-500 shrink-0">{t("form.multiplier")}</span>
                       </div>
                       <div className="flex-1 min-w-0">
                         <input
@@ -474,7 +474,7 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
                           value={hourlyVal}
                           onChange={(e) => hourlySet(e.target.value)}
                           onFocus={(e) => e.target.select()}
-                          placeholder="$/hr"
+                          placeholder={t("form.perHour")}
                           min="0"
                           step="0.01"
                           className="block w-full max-w-full min-w-0 bg-gray-700 rounded-lg px-3 py-1.5 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -490,7 +490,7 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
       )}
 
       <div className="flex items-center justify-between py-2">
-        <span className="text-sm text-gray-400">扣稅</span>
+        <span className="text-sm text-gray-400">{t("form.tax")}</span>
         <Toggle checked={taxEnabled} onChange={() => setTaxEnabled((v) => !v)} />
       </div>
 
@@ -501,7 +501,7 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
             onClick={onCancel}
             className="flex-1 py-3 rounded-xl bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
           >
-            取消
+            {t("common.cancel")}
           </button>
         )}
         <button
@@ -509,7 +509,7 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
           disabled={submitting || !name.trim()}
           className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors"
         >
-          {submitting ? "新增中..." : "新增"}
+          {submitting ? t("common.adding") : t("common.add")}
         </button>
       </div>
     </form>

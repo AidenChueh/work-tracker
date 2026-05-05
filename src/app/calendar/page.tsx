@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useDevice } from "@/hooks/useDevice";
+import { useLocale } from "@/hooks/useLocale";
 import { calcSessionIncome, calcSessionGross } from "@/lib/income";
 
 type Job = {
@@ -65,7 +66,7 @@ const PERIOD_BG_FAINT: Record<PeriodKind, string> = {
   monthly: "bg-purple-500/5",
 };
 
-const WEEKDAYS_COL = ["一", "二", "三", "四", "五", "六", "日"];
+const WEEKDAY_KEYS = ["cal.weekday.mon", "cal.weekday.tue", "cal.weekday.wed", "cal.weekday.thu", "cal.weekday.fri", "cal.weekday.sat", "cal.weekday.sun"] as const;
 
 function formatHours(ms: number): string {
   const totalMin = Math.round(ms / 60000);
@@ -136,6 +137,7 @@ function isBiweeklyPayday(cellDate: Date, job: Job): boolean {
 
 export default function CalendarPage() {
   const { deviceId, loaded } = useDevice();
+  const { t, locale } = useLocale();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [sessions, setSessions] = useState<WorkSession[]>([]);
   const [viewYear, setViewYear] = useState(() => new Date().getFullYear());
@@ -329,10 +331,13 @@ export default function CalendarPage() {
   if (!loaded || loading) {
     return (
       <div className="flex items-center justify-center h-64 bg-gray-950">
-        <div className="text-white">載入中...</div>
+        <div className="text-white">{t("common.loading")}</div>
       </div>
     );
   }
+
+  const monthsEn = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const monthLabel = locale === "en" ? `${monthsEn[viewMonth]} ${viewYear}` : `${viewYear}年${viewMonth + 1}月`;
 
   return (
     <main className="bg-gray-950 text-white">
@@ -348,9 +353,7 @@ export default function CalendarPage() {
               <path strokeLinecap="round" d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <span className="text-lg font-semibold">
-            {viewYear}年{viewMonth + 1}月
-          </span>
+          <span className="text-lg font-semibold">{monthLabel}</span>
           <button
             onClick={() => navigateMonth(1)}
             className="p-2 rounded-xl hover:bg-gray-800 text-gray-400 hover:text-white transition-colors"
@@ -363,8 +366,8 @@ export default function CalendarPage() {
 
         {/* Day of week headers */}
         <div className="grid grid-cols-7 mb-1">
-          {WEEKDAYS_COL.map((d) => (
-            <div key={d} className="text-center text-xs text-gray-500 py-1">{d}</div>
+          {WEEKDAY_KEYS.map((k) => (
+            <div key={k} className="text-center text-xs text-gray-500 py-1">{t(k)}</div>
           ))}
         </div>
 
@@ -431,7 +434,8 @@ export default function CalendarPage() {
                   const matchingJob = weeklyJobs.find((j) => j.payDay === cellDow);
                   const { start, end } = periodForCellWithSpan(day, matchingJob?.payWeekStart, 7);
                   const matchingJobIds = weeklyJobs.filter((j) => j.payDay === cellDow).map((j) => j.id);
-                  const label = `${start.toLocaleDateString("zh-TW")} – ${end.toLocaleDateString("zh-TW")}`;
+                  const localeStr = locale === "en" ? "en-US" : "zh-TW";
+                  const label = `${start.toLocaleDateString(localeStr)} – ${end.toLocaleDateString(localeStr)}`;
                   const isActive = selection?.type === "period" && selection.periodStart === start.toISOString();
                   return (
                     <button
@@ -455,7 +459,8 @@ export default function CalendarPage() {
                   const matchingJob = biweeklyJobs.find((j) => isBiweeklyPayday(day, j));
                   const { start, end } = periodForCellWithSpan(day, matchingJob?.payWeekStart, 14);
                   const matchingJobIds = biweeklyJobs.filter((j) => isBiweeklyPayday(day, j)).map((j) => j.id);
-                  const label = `${start.toLocaleDateString("zh-TW")} – ${end.toLocaleDateString("zh-TW")}`;
+                  const localeStr = locale === "en" ? "en-US" : "zh-TW";
+                  const label = `${start.toLocaleDateString(localeStr)} – ${end.toLocaleDateString(localeStr)}`;
                   const isActive = selection?.type === "period" && selection.periodStart === start.toISOString();
                   return (
                     <button
@@ -480,7 +485,7 @@ export default function CalendarPage() {
                   const prevMonthEnd = new Date(viewYear, viewMonth, 0, 23, 59, 59).toISOString();
                   const prevMonth = viewMonth === 0 ? 12 : viewMonth;
                   const prevYear = viewMonth === 0 ? viewYear - 1 : viewYear;
-                  const label = `${prevYear}年${prevMonth}月`;
+                  const label = locale === "en" ? `${monthsEn[prevMonth - 1]} ${prevYear}` : `${prevYear}年${prevMonth}月`;
                   const matchingJobIds = monthlyJobs.filter((j) => j.payDay === day.getDate() && day.getMonth() === viewMonth).map((j) => j.id);
                   const isActive = selection?.type === "period" && selection.periodStart === prevMonthStart;
                   return (
@@ -508,24 +513,24 @@ export default function CalendarPage() {
         <div className="flex flex-wrap gap-3 mt-3 px-1">
           <div className="flex items-center gap-1.5 text-xs text-gray-500">
             <div className="w-1.5 h-1.5 bg-green-400 rounded-full" />
-            上班
+            {t("cal.legend.work")}
           </div>
           {weeklyJobs.length > 0 && (
             <div className="flex items-center gap-1.5 text-xs text-gray-500">
               <div className="w-3 h-3 rounded bg-amber-500/30 border border-amber-500/50" />
-              週薪
+              {t("cal.legend.weekly")}
             </div>
           )}
           {biweeklyJobs.length > 0 && (
             <div className="flex items-center gap-1.5 text-xs text-gray-500">
               <div className="w-3 h-3 rounded bg-cyan-500/30 border border-cyan-500/50" />
-              雙週薪
+              {t("cal.legend.biweekly")}
             </div>
           )}
           {monthlyJobs.length > 0 && (
             <div className="flex items-center gap-1.5 text-xs text-gray-500">
               <div className="w-3 h-3 rounded bg-purple-500/30 border border-purple-500/50" />
-              月薪
+              {t("cal.legend.monthly")}
             </div>
           )}
         </div>
@@ -546,7 +551,7 @@ export default function CalendarPage() {
             </div>
 
             {detailData.sessions.length === 0 ? (
-              <p className="text-gray-400 text-sm text-center py-6">這段期間沒有打卡紀錄</p>
+              <p className="text-gray-400 text-sm text-center py-6">{t("cal.empty")}</p>
             ) : (
               <>
                 {(() => {
@@ -570,7 +575,7 @@ export default function CalendarPage() {
                           <div className="flex justify-between items-center px-4 py-2 bg-gray-750 border-b border-gray-700/50">
                             <span className="text-xs font-medium text-gray-300">{job.name}</span>
                             {isPeriodView && groupHasIncome && (
-                              <span className="text-xs text-green-400">小計 ${groupGross.toFixed(2)}</span>
+                              <span className="text-xs text-green-400">{t("cal.subtotal", { amount: groupGross.toFixed(2) })}</span>
                             )}
                           </div>
                         )}
@@ -591,18 +596,13 @@ export default function CalendarPage() {
                                 <div className="flex justify-between items-start">
                                   <div>
                                     <p className="text-sm font-medium">
-                                      {new Date(s.clockIn).toLocaleDateString("zh-TW")}
+                                      {new Date(s.clockIn).toLocaleDateString(locale === "en" ? "en-US" : "zh-TW")}
                                     </p>
                                     <p className="text-xs text-gray-400 mt-0.5">
                                       {fmtTime(s.clockIn)}
                                       {" — "}
-                                      {s.clockOut ? fmtTime(s.clockOut) : "進行中"}
+                                      {s.clockOut ? fmtTime(s.clockOut) : t("cal.inProgress")}
                                     </p>
-                                    {unpaidMs > 0 && (
-                                      <p className="text-xs text-gray-500 mt-0.5">
-                                        休息 {formatHours(unpaidMs)} 未計
-                                      </p>
-                                    )}
                                   </div>
                                   <div className="text-right">
                                     <p className="text-xs text-gray-400">{formatHours(effectiveMs)}</p>
@@ -612,7 +612,7 @@ export default function CalendarPage() {
                                     {gross !== null ? (
                                       <p className="text-sm font-semibold text-green-400">${gross.toFixed(2)}</p>
                                     ) : (
-                                      <p className="text-xs text-gray-500">抽成制</p>
+                                      <p className="text-xs text-gray-500">{t("cal.commissionLabel")}</p>
                                     )}
                                   </div>
                                 </div>
@@ -632,12 +632,12 @@ export default function CalendarPage() {
                   const isPeriod = selection.type === "period";
                   const hasTax = taxRate > 0 && detailData.sessions.some((s) => s.job.taxEnabled);
                   const net = detailData.sessions.reduce((sum, s) => sum + (calcSessionIncome(s, taxRate) ?? 0), 0);
-                  let label = "當日合計";
+                  let label = t("cal.dayTotal");
                   if (isPeriod) {
                     const freqs = new Set(detailData.sessions.map((s) => jobs.find((j) => j.id === s.jobId)?.payFrequency));
-                    if (freqs.has("monthly")) label = "月薪合計";
-                    else if (freqs.has("bi_weekly")) label = "雙週薪合計";
-                    else label = "週薪合計";
+                    if (freqs.has("monthly")) label = t("cal.monthlyTotal");
+                    else if (freqs.has("bi_weekly")) label = t("cal.biweeklyTotal");
+                    else label = t("cal.weeklyTotal");
                   }
                   return (
                     <div className="px-4 py-3 border-t border-gray-700 bg-gray-900/40">
@@ -645,8 +645,8 @@ export default function CalendarPage() {
                         <div className="flex justify-between items-center">
                           <span className="text-sm text-gray-400">{label}</span>
                           <div className="text-right">
-                            <div className="text-xs text-gray-500">稅前 ${gross.toFixed(2)}</div>
-                            <div className="text-base font-bold text-green-400">稅後 ${net.toFixed(2)}</div>
+                            <div className="text-xs text-gray-500">{t("cal.preTax", { amount: gross.toFixed(2) })}</div>
+                            <div className="text-base font-bold text-green-400">{t("cal.postTax", { amount: net.toFixed(2) })}</div>
                           </div>
                         </div>
                       ) : (

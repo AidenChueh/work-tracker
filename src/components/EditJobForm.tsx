@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useLocale } from "@/hooks/useLocale";
 
 type OvertimeTier = { afterHours: string; rate: string };
 
@@ -38,8 +39,6 @@ type Props = {
   onDeleted: (jobId: string) => void;
 };
 
-const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
-
 function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
   return (
     <button
@@ -60,6 +59,7 @@ function fmtCalc(base: string, mult: string): string {
 }
 
 export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Props) {
+  const { t } = useLocale();
   const [name, setName] = useState(job.name);
   const [payType, setPayType] = useState<"hourly" | "commission">(
     job.hourlyRate != null ? "hourly" : "commission"
@@ -123,16 +123,16 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
     const nextErrors: typeof errors = {};
     if (payType === "hourly") {
       const hr = parseFloat(hourlyRate);
-      if (!hourlyRate || isNaN(hr) || hr <= 0) nextErrors.hourlyRate = "請輸入時薪";
+      if (!hourlyRate || isNaN(hr) || hr <= 0) nextErrors.hourlyRate = t("form.errHourly");
     } else {
       const cp = parseFloat(commissionPercentage);
-      if (!commissionPercentage || isNaN(cp) || cp <= 0) nextErrors.commissionPercentage = "請輸入抽成比例";
+      if (!commissionPercentage || isNaN(cp) || cp <= 0) nextErrors.commissionPercentage = t("form.errCommission");
     }
     if (payDay === "") {
-      nextErrors.payDay = payFrequency === "monthly" ? "請輸入發薪日（幾號）" : "請選擇發薪日";
+      nextErrors.payDay = payFrequency === "monthly" ? t("form.errPayDayMonth") : t("form.errPayDayWeek");
     } else if (payFrequency === "monthly") {
       const d = parseInt(payDay);
-      if (isNaN(d) || d < 1 || d > 31) nextErrors.payDay = "發薪日需介於 1–31";
+      if (isNaN(d) || d < 1 || d > 31) nextErrors.payDay = t("form.errPayDayRange");
     }
 
     if (Object.keys(nextErrors).length > 0) {
@@ -178,7 +178,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
   };
 
   const handleDelete = async () => {
-    if (!window.confirm(`確定要刪除「${job.name}」嗎？\n相關的打卡紀錄也會一併刪除，且無法復原。`)) return;
+    if (!window.confirm(t("form.deleteConfirm", { name: job.name }))) return;
     setDeleting(true);
     const res = await fetch(`/api/jobs/${job.id}`, {
       method: "DELETE",
@@ -193,7 +193,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
   return (
     <form onSubmit={handleSubmit} className="bg-gray-700 rounded-2xl p-4 mt-2 space-y-3">
       <div>
-        <label className="block text-xs text-gray-400 mb-1">工作名稱</label>
+        <label className="block text-xs text-gray-400 mb-1">{t("form.name")}</label>
         <input
           type="text"
           value={name}
@@ -204,7 +204,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
       </div>
 
       <div>
-        <label className="block text-xs text-gray-400 mb-1">薪資類型</label>
+        <label className="block text-xs text-gray-400 mb-1">{t("form.payType")}</label>
         <div className="flex gap-2">
           {(["hourly", "commission"] as const).map((type) => (
             <button
@@ -215,7 +215,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
                 payType === type ? "bg-blue-600 text-white" : "bg-gray-600 text-gray-300"
               }`}
             >
-              {type === "hourly" ? "時薪" : "抽成"}
+              {type === "hourly" ? t("form.hourly") : t("form.commission")}
             </button>
           ))}
         </div>
@@ -223,7 +223,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
 
       {payType === "hourly" && (
         <div>
-          <label className="block text-xs text-gray-400 mb-1">時薪（$）<span className="text-red-400 ml-1">*</span></label>
+          <label className="block text-xs text-gray-400 mb-1">{t("form.hourlyRate")}<span className="text-red-400 ml-1">*</span></label>
           <input
             type="number"
             value={hourlyRate}
@@ -241,7 +241,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
       {payType === "commission" && (
         <>
           <div>
-            <label className="block text-xs text-gray-400 mb-1">抽成比例（%）<span className="text-red-400 ml-1">*</span></label>
+            <label className="block text-xs text-gray-400 mb-1">{t("form.commissionPct")}<span className="text-red-400 ml-1">*</span></label>
             <input
               type="number"
               value={commissionPercentage}
@@ -256,14 +256,14 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
             {errors.commissionPercentage && <p className="text-[10px] text-red-400 mt-1">{errors.commissionPercentage}</p>}
           </div>
           <div className="flex items-center justify-between py-1">
-            <span className="text-xs text-gray-400">下班需填業績（必填）</span>
+            <span className="text-xs text-gray-400">{t("form.commissionRequired")}</span>
             <Toggle checked={commissionRequired} onChange={() => setCommissionRequired((v) => !v)} />
           </div>
         </>
       )}
 
       <div>
-        <label className="block text-xs text-gray-400 mb-1">班表類型</label>
+        <label className="block text-xs text-gray-400 mb-1">{t("form.scheduleType")}</label>
         <div className="flex gap-2">
           {(["flexible", "fixed"] as const).map((type) => (
             <button
@@ -274,14 +274,14 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
                 scheduleType === type ? "bg-blue-600 text-white" : "bg-gray-600 text-gray-300"
               }`}
             >
-              {type === "flexible" ? "彈性" : "固定"}
+              {type === "flexible" ? t("form.flexibleShort") : t("form.fixedShort")}
             </button>
           ))}
         </div>
         {scheduleType === "fixed" && (
           <div className="grid grid-cols-2 gap-2 mt-2">
             <div className="min-w-0">
-              <label className="block text-[10px] text-gray-400 mb-1">固定上班</label>
+              <label className="block text-[10px] text-gray-400 mb-1">{t("form.fixedClockIn")}</label>
               <input
                 type="time"
                 value={fixedClockIn}
@@ -290,7 +290,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
               />
             </div>
             <div className="min-w-0">
-              <label className="block text-[10px] text-gray-400 mb-1">固定下班</label>
+              <label className="block text-[10px] text-gray-400 mb-1">{t("form.fixedClockOut")}</label>
               <input
                 type="time"
                 value={fixedClockOut}
@@ -303,29 +303,29 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
       </div>
 
       <div>
-        <label className="block text-xs text-gray-400 mb-1">發薪頻率</label>
+        <label className="block text-xs text-gray-400 mb-1">{t("form.payFreq")}</label>
         <select
           value={payFrequency}
           onChange={(e) => { setPayFrequency(e.target.value); setPayDay(""); setPayWeekStart(""); }}
           className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          <option value="weekly">每週</option>
-          <option value="bi_weekly">每兩週</option>
-          <option value="monthly">每月</option>
+          <option value="weekly">{t("form.weekly")}</option>
+          <option value="bi_weekly">{t("form.biweekly")}</option>
+          <option value="monthly">{t("form.monthly")}</option>
         </select>
       </div>
 
       {showWeekdaySelector && (
         <div>
-          <label className="block text-xs text-gray-400 mb-1">發薪日（星期幾）<span className="text-red-400 ml-1">*</span></label>
+          <label className="block text-xs text-gray-400 mb-1">{t("form.payDayWeek")}<span className="text-red-400 ml-1">*</span></label>
           <select
             value={payDay}
             onChange={(e) => { setPayDay(e.target.value); if (errors.payDay) setErrors((p) => ({ ...p, payDay: undefined })); }}
             className={`block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 ${errors.payDay ? "ring-2 ring-red-500" : "focus:ring-blue-500"}`}
           >
-            <option value="">選擇星期</option>
-            {WEEKDAYS.map((day, i) => (
-              <option key={i} value={i}>星期{day}</option>
+            <option value="">{t("form.selectWeekday")}</option>
+            {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+              <option key={i} value={i}>{t(`wd.${i}`)}</option>
             ))}
           </select>
           {errors.payDay && <p className="text-[10px] text-red-400 mt-1">{errors.payDay}</p>}
@@ -334,24 +334,24 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
 
       {showWeekdaySelector && (
         <div>
-          <label className="block text-xs text-gray-400 mb-1">計薪週起始日（選填）</label>
+          <label className="block text-xs text-gray-400 mb-1">{t("form.weekStart")}</label>
           <select
             value={payWeekStart}
             onChange={(e) => setPayWeekStart(e.target.value)}
             className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value="">預設（依發薪日往前推算）</option>
-            {WEEKDAYS.map((day, i) => (
-              <option key={i} value={i}>星期{day}</option>
+            <option value="">{t("form.weekStartDefault")}</option>
+            {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+              <option key={i} value={i}>{t(`wd.${i}`)}</option>
             ))}
           </select>
-          <p className="text-[10px] text-gray-500 mt-0.5">例如：星期四 → 計薪週為四到三</p>
+          <p className="text-[10px] text-gray-500 mt-0.5">{t("form.weekStartHintShort")}</p>
         </div>
       )}
 
       {payFrequency === "monthly" && (
         <div>
-          <label className="block text-xs text-gray-400 mb-1">發薪日（幾號）<span className="text-red-400 ml-1">*</span></label>
+          <label className="block text-xs text-gray-400 mb-1">{t("form.payDayMonth")}<span className="text-red-400 ml-1">*</span></label>
           <input
             type="number"
             value={payDay}
@@ -370,13 +370,13 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
         <>
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-gray-400">加班費設定</span>
+              <span className="text-xs text-gray-400">{t("form.overtime")}</span>
               <button
                 type="button"
                 onClick={addTier}
                 className="text-xs text-blue-400 hover:text-blue-300 px-2 py-0.5 bg-blue-500/10 rounded-lg transition-colors"
               >
-                + 新增區間
+                {t("form.addTier")}
               </button>
             </div>
             {overtimeTiers.length > 0 && (
@@ -393,7 +393,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
                         step="0.5"
                         className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
-                      <span className="text-[10px] text-gray-500 ml-1">小時後</span>
+                      <span className="text-[10px] text-gray-500 ml-1">{t("form.hoursAfter")}</span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <input
@@ -405,7 +405,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
                         step="0.01"
                         className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
-                      <span className="text-[10px] text-gray-500 ml-1">$/hr</span>
+                      <span className="text-[10px] text-gray-500 ml-1">{t("form.perHour")}</span>
                     </div>
                     <button
                       type="button"
@@ -421,13 +421,13 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
           </div>
 
           <div className="flex items-center justify-between py-1">
-            <span className="text-xs text-gray-400">有休息時間</span>
+            <span className="text-xs text-gray-400">{t("form.hasBreak")}</span>
             <Toggle checked={hasBreak} onChange={() => setHasBreak((v) => !v)} />
           </div>
           {hasBreak && (
             <div className="flex gap-2">
               <div className="flex-1 min-w-0">
-                <label className="block text-xs text-gray-400 mb-1">休息（分鐘）</label>
+                <label className="block text-xs text-gray-400 mb-1">{t("form.breakMinutes")}</label>
                 <input
                   type="number"
                   value={breakDuration}
@@ -440,13 +440,13 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
                 />
               </div>
               <div className="flex-1 min-w-0">
-                <label className="block text-xs text-gray-400 mb-1">休息時薪（選填）</label>
+                <label className="block text-xs text-gray-400 mb-1">{t("form.breakRate")}</label>
                 <input
                   type="number"
                   value={breakRate}
                   onChange={(e) => setBreakRate(e.target.value)}
                   onFocus={(e) => e.target.select()}
-                  placeholder="不填為無薪"
+                  placeholder={t("form.breakRatePlaceholder")}
                   min="0"
                   step="0.01"
                   className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -459,18 +459,18 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
           <div className="border-t border-gray-600/50 pt-3">
             <div className="flex items-center justify-between mb-2">
               <div>
-                <span className="text-xs text-gray-300">澳洲 Penalty Rates</span>
-                <p className="text-[10px] text-gray-500 mt-0.5">假日薪資加乘</p>
+                <span className="text-xs text-gray-300">{t("form.penaltyTitle")}</span>
+                <p className="text-[10px] text-gray-500 mt-0.5">{t("form.penaltyDescShort")}</p>
               </div>
               <Toggle checked={penaltyRatesEnabled} onChange={() => setPenaltyRatesEnabled((v) => !v)} />
             </div>
             {penaltyRatesEnabled && (
               <div className="space-y-3 mt-2 bg-gray-600/40 rounded-lg p-2.5">
-                <p className="text-[10px] text-gray-500">時薪會依倍率自動計算，可手動修改</p>
+                <p className="text-[10px] text-gray-500">{t("form.penaltyAutoHint")}</p>
                 {[
-                  { label: "週六", rateVal: saturdayRate, rateSet: setSaturdayRate, hourlyVal: saturdayHourlyRate, hourlySet: setSaturdayHourlyRate },
-                  { label: "週日", rateVal: sundayRate, rateSet: setSundayRate, hourlyVal: sundayHourlyRate, hourlySet: setSundayHourlyRate },
-                  { label: "國定假日", rateVal: publicHolidayRate, rateSet: setPublicHolidayRate, hourlyVal: publicHolidayHourlyRate, hourlySet: setPublicHolidayHourlyRate },
+                  { label: t("form.saturday"), rateVal: saturdayRate, rateSet: setSaturdayRate, hourlyVal: saturdayHourlyRate, hourlySet: setSaturdayHourlyRate },
+                  { label: t("form.sunday"), rateVal: sundayRate, rateSet: setSundayRate, hourlyVal: sundayHourlyRate, hourlySet: setSundayHourlyRate },
+                  { label: t("form.holiday"), rateVal: publicHolidayRate, rateSet: setPublicHolidayRate, hourlyVal: publicHolidayHourlyRate, hourlySet: setPublicHolidayHourlyRate },
                 ].map(({ label, rateVal, rateSet, hourlyVal, hourlySet }) => (
                   <div key={label}>
                     <span className="text-xs text-gray-300 block mb-1">{label}</span>
@@ -485,7 +485,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
                           step="0.1"
                           className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
-                        <span className="text-xs text-gray-500 shrink-0">× 倍</span>
+                        <span className="text-xs text-gray-500 shrink-0">{t("form.multiplier")}</span>
                       </div>
                       <div className="flex-1 min-w-0">
                         <input
@@ -493,7 +493,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
                           value={hourlyVal}
                           onChange={(e) => hourlySet(e.target.value)}
                           onFocus={(e) => e.target.select()}
-                          placeholder="$/hr"
+                          placeholder={t("form.perHour")}
                           min="0"
                           step="0.01"
                           className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-2 py-1.5 text-white text-xs placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -509,7 +509,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
       )}
 
       <div className="flex items-center justify-between py-1">
-        <span className="text-xs text-gray-400">扣稅</span>
+        <span className="text-xs text-gray-400">{t("form.tax")}</span>
         <Toggle checked={taxEnabled} onChange={() => setTaxEnabled((v) => !v)} />
       </div>
 
@@ -519,14 +519,14 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
           onClick={onCancel}
           className="flex-1 py-2 rounded-lg bg-gray-600 text-gray-300 hover:bg-gray-500 text-sm transition-colors"
         >
-          取消
+          {t("common.cancel")}
         </button>
         <button
           type="submit"
           disabled={submitting || !name.trim()}
           className="flex-1 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
         >
-          {submitting ? "儲存中..." : "儲存"}
+          {submitting ? t("common.saving") : t("common.save")}
         </button>
       </div>
 
@@ -536,7 +536,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
         disabled={deleting}
         className="w-full text-xs text-red-400 hover:text-red-300 py-1 transition-colors disabled:opacity-50"
       >
-        {deleting ? "刪除中..." : "刪除此工作"}
+        {deleting ? t("common.deleting") : t("form.deleteThis")}
       </button>
     </form>
   );
