@@ -19,13 +19,15 @@ type Job = {
   breakDuration: number | null;
   breakRate: number | null;
   penaltyRatesEnabled: boolean;
-  penaltyBaseRate: number | null;
   publicHolidayRate: number;
   saturdayRate: number;
   sundayRate: number;
   saturdayHourlyRate: number | null;
   sundayHourlyRate: number | null;
   publicHolidayHourlyRate: number | null;
+  scheduleType: string;
+  fixedClockIn: string | null;
+  fixedClockOut: string | null;
   overtimeTiers: OvertimeTier[];
 };
 
@@ -312,7 +314,7 @@ export default function RecordsPage() {
         </div>
 
         {showAddForm && (
-          <form onSubmit={handleAdd} className="bg-gray-800 rounded-2xl p-4 mb-4 space-y-3">
+          <form onSubmit={handleAdd} className="bg-gray-800 rounded-2xl p-3 sm:p-4 mb-4 space-y-3">
             <p className="text-sm font-medium text-gray-300">新增打卡紀錄</p>
             <div>
               <label className="text-xs text-gray-400 block mb-1">工作</label>
@@ -320,7 +322,7 @@ export default function RecordsPage() {
                 value={addJobId}
                 onChange={(e) => setAddJobId(e.target.value)}
                 required
-                className="block w-full max-w-full min-w-0 bg-gray-700 rounded-xl px-3 py-2 text-sm text-white"
+                className="block w-full max-w-full min-w-0 box-border bg-gray-700 rounded-xl px-3 py-2 text-sm text-white"
               >
                 <option value="">選擇工作...</option>
                 {jobs.map((j) => (
@@ -335,28 +337,28 @@ export default function RecordsPage() {
                 value={addDate}
                 onChange={(e) => setAddDate(e.target.value)}
                 required
-                className="block w-full max-w-full min-w-0 bg-gray-700 rounded-xl px-3 py-2 text-sm text-white"
+                className="block w-full max-w-full min-w-0 box-border bg-gray-700 rounded-xl px-3 py-2 text-sm text-white"
               />
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <div className="min-w-0 overflow-hidden">
+              <div className="min-w-0">
                 <label className="text-xs text-gray-400 block mb-1">上班時間</label>
                 <input
                   type="time"
                   value={addStart}
                   onChange={(e) => setAddStart(e.target.value)}
                   required
-                  className="block w-full max-w-full min-w-0 bg-gray-700 rounded-xl px-2 py-2 text-sm text-white"
+                  className="block w-full max-w-full min-w-0 box-border bg-gray-700 rounded-xl px-2 py-2 text-sm text-white"
                 />
               </div>
-              <div className="min-w-0 overflow-hidden">
+              <div className="min-w-0">
                 <label className="text-xs text-gray-400 block mb-1">下班時間</label>
                 <input
                   type="time"
                   value={addEnd}
                   onChange={(e) => setAddEnd(e.target.value)}
                   required
-                  className="block w-full max-w-full min-w-0 bg-gray-700 rounded-xl px-2 py-2 text-sm text-white"
+                  className="block w-full max-w-full min-w-0 box-border bg-gray-700 rounded-xl px-2 py-2 text-sm text-white"
                 />
               </div>
             </div>
@@ -375,11 +377,12 @@ export default function RecordsPage() {
                     type="number"
                     value={addDailyRevenue}
                     onChange={(e) => setAddDailyRevenue(e.target.value)}
+                    onFocus={(e) => e.target.select()}
                     placeholder="0.00"
                     min="0"
                     step="0.01"
                     required={selectedAddJob?.commissionRequired}
-                    className="block w-full max-w-full min-w-0 bg-gray-700 rounded-xl pl-7 pr-3 py-2 text-sm text-white placeholder-gray-500"
+                    className="block w-full max-w-full min-w-0 box-border bg-gray-700 rounded-xl pl-7 pr-3 py-2 text-sm text-white placeholder-gray-500"
                   />
                 </div>
               </div>
@@ -503,7 +506,7 @@ export default function RecordsPage() {
                                   <form
                                     key={s.id}
                                     onSubmit={handleEdit}
-                                    className="bg-gray-700 rounded-xl p-3 space-y-2"
+                                    className="bg-gray-700 rounded-xl p-2.5 sm:p-3 space-y-2"
                                   >
                                     <div>
                                       <label className="text-xs text-gray-400 block mb-1">上班時間</label>
@@ -514,7 +517,7 @@ export default function RecordsPage() {
                                             value={editClockInDate}
                                             onChange={(e) => setEditClockInDate(e.target.value)}
                                             required
-                                            className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-2 py-1.5 text-xs text-white"
+                                            className="block w-full max-w-full min-w-0 box-border bg-gray-600 rounded-lg px-1.5 py-1.5 text-xs text-white"
                                           />
                                         </div>
                                         <div className="min-w-0">
@@ -523,7 +526,7 @@ export default function RecordsPage() {
                                             value={editClockInTime}
                                             onChange={(e) => setEditClockInTime(e.target.value)}
                                             required
-                                            className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-2 py-1.5 text-xs text-white"
+                                            className="block w-full max-w-full min-w-0 box-border bg-gray-600 rounded-lg px-1.5 py-1.5 text-xs text-white"
                                           />
                                         </div>
                                       </div>
@@ -537,7 +540,7 @@ export default function RecordsPage() {
                                             value={editClockOutDate}
                                             onChange={(e) => setEditClockOutDate(e.target.value)}
                                             required
-                                            className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-2 py-1.5 text-xs text-white"
+                                            className="block w-full max-w-full min-w-0 box-border bg-gray-600 rounded-lg px-1.5 py-1.5 text-xs text-white"
                                           />
                                         </div>
                                         <div className="min-w-0">
@@ -546,7 +549,7 @@ export default function RecordsPage() {
                                             value={editClockOutTime}
                                             onChange={(e) => setEditClockOutTime(e.target.value)}
                                             required
-                                            className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-2 py-1.5 text-xs text-white"
+                                            className="block w-full max-w-full min-w-0 box-border bg-gray-600 rounded-lg px-1.5 py-1.5 text-xs text-white"
                                           />
                                         </div>
                                       </div>

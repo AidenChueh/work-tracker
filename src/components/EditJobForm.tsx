@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 
 type OvertimeTier = { afterHours: string; rate: string };
 
@@ -18,13 +18,15 @@ type Job = {
   breakDuration: number | null;
   breakRate: number | null;
   penaltyRatesEnabled: boolean;
-  penaltyBaseRate: number | null;
   publicHolidayRate: number;
   saturdayRate: number;
   sundayRate: number;
   saturdayHourlyRate: number | null;
   sundayHourlyRate: number | null;
   publicHolidayHourlyRate: number | null;
+  scheduleType: string;
+  fixedClockIn: string | null;
+  fixedClockOut: string | null;
   createdAt: string;
 };
 
@@ -33,7 +35,7 @@ type Props = {
   deviceId: string;
   onSaved: (job: Job) => void;
   onCancel: () => void;
-  onDeactivated: (jobId: string) => void;
+  onDeleted: (jobId: string) => void;
 };
 
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
@@ -50,7 +52,14 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void 
   );
 }
 
-export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }: Props) {
+function fmtCalc(base: string, mult: string): string {
+  const b = parseFloat(base);
+  const m = parseFloat(mult);
+  if (isNaN(b) || isNaN(m) || b <= 0 || m <= 0) return "";
+  return (b * m).toFixed(2).replace(/\.?0+$/, "");
+}
+
+export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Props) {
   const [name, setName] = useState(job.name);
   const [payType, setPayType] = useState<"hourly" | "commission">(
     job.hourlyRate != null ? "hourly" : "commission"
@@ -60,6 +69,11 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
     job.commissionPercentage != null ? (job.commissionPercentage * 100).toString() : ""
   );
   const [commissionRequired, setCommissionRequired] = useState(job.commissionRequired);
+  const [scheduleType, setScheduleType] = useState<"flexible" | "fixed">(
+    job.scheduleType === "fixed" ? "fixed" : "flexible"
+  );
+  const [fixedClockIn, setFixedClockIn] = useState(job.fixedClockIn ?? "09:00");
+  const [fixedClockOut, setFixedClockOut] = useState(job.fixedClockOut ?? "17:00");
   const [payFrequency, setPayFrequency] = useState(job.payFrequency);
   const [payDay, setPayDay] = useState(job.payDay?.toString() ?? "");
   const [payWeekStart, setPayWeekStart] = useState(job.payWeekStart?.toString() ?? "");
@@ -71,7 +85,6 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
   const [breakDuration, setBreakDuration] = useState(job.breakDuration?.toString() ?? "");
   const [breakRate, setBreakRate] = useState(job.breakRate?.toString() ?? "");
   const [penaltyRatesEnabled, setPenaltyRatesEnabled] = useState(job.penaltyRatesEnabled);
-  const [penaltyBaseRate, setPenaltyBaseRate] = useState(job.penaltyBaseRate?.toString() ?? "");
   const [publicHolidayRate, setPublicHolidayRate] = useState(job.publicHolidayRate.toString());
   const [saturdayRate, setSaturdayRate] = useState(job.saturdayRate.toString());
   const [sundayRate, setSundayRate] = useState(job.sundayRate.toString());
@@ -79,6 +92,23 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
   const [sundayHourlyRate, setSundayHourlyRate] = useState(job.sundayHourlyRate?.toString() ?? "");
   const [publicHolidayHourlyRate, setPublicHolidayHourlyRate] = useState(job.publicHolidayHourlyRate?.toString() ?? "");
   const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const initRef = useRef(true);
+
+  useEffect(() => {
+    if (initRef.current) return;
+    setSaturdayHourlyRate(fmtCalc(hourlyRate, saturdayRate));
+  }, [hourlyRate, saturdayRate]);
+  useEffect(() => {
+    if (initRef.current) return;
+    setSundayHourlyRate(fmtCalc(hourlyRate, sundayRate));
+  }, [hourlyRate, sundayRate]);
+  useEffect(() => {
+    if (initRef.current) return;
+    setPublicHolidayHourlyRate(fmtCalc(hourlyRate, publicHolidayRate));
+  }, [hourlyRate, publicHolidayRate]);
+  useEffect(() => { initRef.current = false; }, []);
 
   const addTier = () => setOvertimeTiers((prev) => [...prev, { afterHours: "", rate: "" }]);
   const removeTier = (i: number) => setOvertimeTiers((prev) => prev.filter((_, idx) => idx !== i));
@@ -99,6 +129,9 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
         commissionPercentage:
           payType === "commission" ? parseFloat(commissionPercentage) / 100 || null : null,
         commissionRequired: payType === "commission" ? commissionRequired : false,
+        scheduleType,
+        fixedClockIn: scheduleType === "fixed" ? fixedClockIn : null,
+        fixedClockOut: scheduleType === "fixed" ? fixedClockOut : null,
         payFrequency,
         payDay: payDay !== "" ? parseInt(payDay) : null,
         payWeekStart: payWeekStart !== "" ? parseInt(payWeekStart) : null,
@@ -109,7 +142,6 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
         breakDuration: hasBreak ? parseInt(breakDuration) || null : null,
         breakRate: hasBreak ? parseFloat(breakRate) || null : null,
         penaltyRatesEnabled,
-        penaltyBaseRate: penaltyBaseRate ? parseFloat(penaltyBaseRate) : null,
         publicHolidayRate: parseFloat(publicHolidayRate) || 2.5,
         saturdayRate: parseFloat(saturdayRate) || 1.5,
         sundayRate: parseFloat(sundayRate) || 2.0,
@@ -123,13 +155,15 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
     setSubmitting(false);
   };
 
-  const handleDeactivate = async () => {
+  const handleDelete = async () => {
+    if (!window.confirm(`確定要刪除「${job.name}」嗎？\n相關的打卡紀錄也會一併刪除，且無法復原。`)) return;
+    setDeleting(true);
     const res = await fetch(`/api/jobs/${job.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", "x-device-id": deviceId },
-      body: JSON.stringify({ isActive: false }),
+      method: "DELETE",
+      headers: { "x-device-id": deviceId },
     });
-    if (res.ok) onDeactivated(job.id);
+    if (res.ok) onDeleted(job.id);
+    setDeleting(false);
   };
 
   const showWeekdaySelector = payFrequency === "weekly" || payFrequency === "bi_weekly";
@@ -142,7 +176,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="w-full bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           required
         />
       </div>
@@ -172,10 +206,11 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
             type="number"
             value={hourlyRate}
             onChange={(e) => setHourlyRate(e.target.value)}
+            onFocus={(e) => e.target.select()}
             placeholder="0.00"
             min="0"
             step="0.01"
-            className="w-full bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
       )}
@@ -188,11 +223,12 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
               type="number"
               value={commissionPercentage}
               onChange={(e) => setCommissionPercentage(e.target.value)}
+              onFocus={(e) => e.target.select()}
               placeholder="10"
               min="0"
               max="100"
               step="0.1"
-              className="w-full bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div className="flex items-center justify-between py-1">
@@ -203,11 +239,51 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
       )}
 
       <div>
+        <label className="block text-xs text-gray-400 mb-1">班表類型</label>
+        <div className="flex gap-2">
+          {(["flexible", "fixed"] as const).map((type) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => setScheduleType(type)}
+              className={`flex-1 py-1.5 rounded-lg text-xs transition-colors ${
+                scheduleType === type ? "bg-blue-600 text-white" : "bg-gray-600 text-gray-300"
+              }`}
+            >
+              {type === "flexible" ? "彈性" : "固定"}
+            </button>
+          ))}
+        </div>
+        {scheduleType === "fixed" && (
+          <div className="grid grid-cols-2 gap-2 mt-2">
+            <div className="min-w-0">
+              <label className="block text-[10px] text-gray-400 mb-1">固定上班</label>
+              <input
+                type="time"
+                value={fixedClockIn}
+                onChange={(e) => setFixedClockIn(e.target.value)}
+                className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="min-w-0">
+              <label className="block text-[10px] text-gray-400 mb-1">固定下班</label>
+              <input
+                type="time"
+                value={fixedClockOut}
+                onChange={(e) => setFixedClockOut(e.target.value)}
+                className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div>
         <label className="block text-xs text-gray-400 mb-1">發薪頻率</label>
         <select
           value={payFrequency}
           onChange={(e) => { setPayFrequency(e.target.value); setPayDay(""); setPayWeekStart(""); }}
-          className="w-full bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="weekly">每週</option>
           <option value="bi_weekly">每兩週</option>
@@ -221,7 +297,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
           <select
             value={payDay}
             onChange={(e) => setPayDay(e.target.value)}
-            className="w-full bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">選擇星期</option>
             {WEEKDAYS.map((day, i) => (
@@ -237,7 +313,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
           <select
             value={payWeekStart}
             onChange={(e) => setPayWeekStart(e.target.value)}
-            className="w-full bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">預設（依發薪日往前推算）</option>
             {WEEKDAYS.map((day, i) => (
@@ -255,10 +331,11 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
             type="number"
             value={payDay}
             onChange={(e) => setPayDay(e.target.value)}
+            onFocus={(e) => e.target.select()}
             min="1"
             max="31"
             placeholder="15"
-            className="w-full bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
       )}
@@ -280,7 +357,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
               <div className="space-y-2">
                 {overtimeTiers.map((tier, i) => (
                   <div key={i} className="flex gap-2 items-center">
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <input
                         type="number"
                         value={tier.afterHours}
@@ -288,11 +365,11 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
                         placeholder="8"
                         min="0"
                         step="0.5"
-                        className="w-full bg-gray-600 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                       <span className="text-[10px] text-gray-500 ml-1">小時後</span>
                     </div>
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <input
                         type="number"
                         value={tier.rate}
@@ -300,7 +377,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
                         placeholder="0.00"
                         min="0"
                         step="0.01"
-                        className="w-full bg-gray-600 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                       <span className="text-[10px] text-gray-500 ml-1">$/hr</span>
                     </div>
@@ -323,28 +400,30 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
           </div>
           {hasBreak && (
             <div className="flex gap-2">
-              <div className="flex-1">
-                <label className="block text-xs text-gray-400 mb-1">休息時間（分鐘）</label>
+              <div className="flex-1 min-w-0">
+                <label className="block text-xs text-gray-400 mb-1">休息（分鐘）</label>
                 <input
                   type="number"
                   value={breakDuration}
                   onChange={(e) => setBreakDuration(e.target.value)}
+                  onFocus={(e) => e.target.select()}
                   placeholder="30"
                   min="0"
                   step="1"
-                  className="w-full bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              <div className="flex-1">
-                <label className="block text-xs text-gray-400 mb-1">休息時薪（$，選填）</label>
+              <div className="flex-1 min-w-0">
+                <label className="block text-xs text-gray-400 mb-1">休息時薪（選填）</label>
                 <input
                   type="number"
                   value={breakRate}
                   onChange={(e) => setBreakRate(e.target.value)}
+                  onFocus={(e) => e.target.select()}
                   placeholder="不填為無薪"
                   min="0"
                   step="0.01"
-                  className="w-full bg-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
@@ -361,19 +440,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
             </div>
             {penaltyRatesEnabled && (
               <div className="space-y-3 mt-2 bg-gray-600/40 rounded-lg p-2.5">
-                <div>
-                  <label className="block text-[10px] text-gray-400 mb-1">自訂基本時薪（$，選填）</label>
-                  <input
-                    type="number"
-                    value={penaltyBaseRate}
-                    onChange={(e) => setPenaltyBaseRate(e.target.value)}
-                    placeholder="不填則以工作時薪 × 倍率計算"
-                    min="0"
-                    step="0.01"
-                    className="w-full bg-gray-600 rounded-lg px-2 py-1.5 text-white text-xs placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <p className="text-[10px] text-gray-500">倍率與固定時薪二擇一，設定固定時薪優先使用</p>
+                <p className="text-[10px] text-gray-500">時薪會依倍率自動計算，可手動修改</p>
                 {[
                   { label: "週六", rateVal: saturdayRate, rateSet: setSaturdayRate, hourlyVal: saturdayHourlyRate, hourlySet: setSaturdayHourlyRate },
                   { label: "週日", rateVal: sundayRate, rateSet: setSundayRate, hourlyVal: sundayHourlyRate, hourlySet: setSundayHourlyRate },
@@ -382,26 +449,28 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
                   <div key={label}>
                     <span className="text-xs text-gray-300 block mb-1">{label}</span>
                     <div className="flex gap-2">
-                      <div className="flex-1 flex items-center gap-1">
+                      <div className="flex-1 min-w-0 flex items-center gap-1">
                         <input
                           type="number"
                           value={rateVal}
                           onChange={(e) => rateSet(e.target.value)}
+                          onFocus={(e) => e.target.select()}
                           min="1"
                           step="0.1"
-                          className="w-full bg-gray-600 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                         <span className="text-xs text-gray-500 shrink-0">× 倍</span>
                       </div>
-                      <div className="flex-1 flex items-center gap-1">
+                      <div className="flex-1 min-w-0">
                         <input
                           type="number"
                           value={hourlyVal}
                           onChange={(e) => hourlySet(e.target.value)}
-                          placeholder="固定$/hr"
+                          onFocus={(e) => e.target.select()}
+                          placeholder="$/hr"
                           min="0"
                           step="0.01"
-                          className="w-full bg-gray-600 rounded-lg px-2 py-1.5 text-white text-xs placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="block w-full max-w-full min-w-0 bg-gray-600 rounded-lg px-2 py-1.5 text-white text-xs placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </div>
                     </div>
@@ -437,10 +506,11 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeactivated }:
 
       <button
         type="button"
-        onClick={handleDeactivate}
-        className="w-full text-xs text-red-400 hover:text-red-300 py-1 transition-colors"
+        onClick={handleDelete}
+        disabled={deleting}
+        className="w-full text-xs text-red-400 hover:text-red-300 py-1 transition-colors disabled:opacity-50"
       >
-        停用此工作
+        {deleting ? "刪除中..." : "刪除此工作"}
       </button>
     </form>
   );

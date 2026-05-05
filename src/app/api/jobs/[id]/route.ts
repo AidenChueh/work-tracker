@@ -36,3 +36,20 @@ export async function PATCH(
 
   return NextResponse.json(updated);
 }
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const deviceId = req.headers.get("x-device-id");
+  if (!deviceId) {
+    return NextResponse.json({ error: "x-device-id required" }, { status: 400 });
+  }
+
+  const { id } = await params;
+  const job = await prisma.job.findFirst({ where: { id, deviceId } });
+  if (!job) return NextResponse.json({ error: "not found" }, { status: 404 });
+
+  await prisma.job.delete({ where: { id } });
+  return NextResponse.json({ ok: true });
+}

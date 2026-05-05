@@ -19,13 +19,15 @@ type Job = {
   breakDuration: number | null;
   breakRate: number | null;
   penaltyRatesEnabled: boolean;
-  penaltyBaseRate: number | null;
   publicHolidayRate: number;
   saturdayRate: number;
   sundayRate: number;
   saturdayHourlyRate: number | null;
   sundayHourlyRate: number | null;
   publicHolidayHourlyRate: number | null;
+  scheduleType: string;
+  fixedClockIn: string | null;
+  fixedClockOut: string | null;
   createdAt: string;
 };
 
@@ -175,7 +177,7 @@ export default function JobsPage() {
                       setEditingJobId(null);
                     }}
                     onCancel={() => setEditingJobId(null)}
-                    onDeactivated={(jobId) => {
+                    onDeleted={(jobId) => {
                       setJobs((prev) => prev.filter((j) => j.id !== jobId));
                       setEditingJobId(null);
                     }}

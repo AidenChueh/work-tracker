@@ -29,7 +29,6 @@ model Job {
   breakDuration        Int?
   breakRate            Float?
   penaltyRatesEnabled      Boolean       @default(false)
-  penaltyBaseRate          Float?
   publicHolidayRate        Float         @default(2.5)
   saturdayRate             Float         @default(1.5)
   sundayRate               Float         @default(2.0)
@@ -37,6 +36,9 @@ model Job {
   sundayHourlyRate         Float?
   publicHolidayHourlyRate  Float?
   payWeekStart             Int?
+  scheduleType             String        @default("flexible")
+  fixedClockIn             String?
+  fixedClockOut            String?
   isActive                 Boolean       @default(true)
   createdAt            DateTime      @default(now())
   sessions             WorkSession[]
@@ -57,7 +59,7 @@ model WorkSession {
   deviceId        String
   device          Device    @relation(fields: [deviceId], references: [id])
   jobId           String
-  job             Job       @relation(fields: [jobId], references: [id])
+  job             Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
   clockIn         DateTime
   clockOut        DateTime?
   notes           String?
@@ -70,7 +72,7 @@ model WorkSession {
 model Break {
   id        String      @id @default(uuid())
   sessionId String
-  session   WorkSession @relation(fields: [sessionId], references: [id])
+  session   WorkSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   startTime DateTime
   endTime   DateTime?
   isPaid    Boolean     @default(false)

@@ -18,13 +18,16 @@ type Job = {
   breakDuration: number | null;
   breakRate: number | null;
   penaltyRatesEnabled: boolean;
-  penaltyBaseRate: number | null;
   publicHolidayRate: number;
   saturdayRate: number;
   sundayRate: number;
   saturdayHourlyRate: number | null;
   sundayHourlyRate: number | null;
   publicHolidayHourlyRate: number | null;
+  scheduleType: string;
+  fixedClockIn: string | null;
+  fixedClockOut: string | null;
+  createdAt: string;
 };
 
 type Break = {
@@ -79,7 +82,7 @@ function fmtTime(iso: string): string {
   return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
 }
 
-function weeklyPeriodForCell(cellDate: Date, payWeekStart?: number | null): { start: Date; end: Date } {
+function periodForCellWithSpan(cellDate: Date, payWeekStart: number | null | undefined, periodDays: number): { start: Date; end: Date } {
   if (payWeekStart != null) {
     const periodEndDow = (payWeekStart - 1 + 7) % 7;
     const cellDow = cellDate.getDay();
@@ -88,15 +91,34 @@ function weeklyPeriodForCell(cellDate: Date, payWeekStart?: number | null): { st
     end.setDate(cellDate.getDate() - daysFromPeriodEndToPayday);
     const endDay = endOfDay(end);
     const start = startOfDay(new Date(end));
-    start.setDate(start.getDate() - 6);
+    start.setDate(start.getDate() - (periodDays - 1));
     return { start, end: endDay };
   }
   const dayBefore = new Date(cellDate);
   dayBefore.setDate(dayBefore.getDate() - 1);
   const end = endOfDay(dayBefore);
   const start = startOfDay(new Date(dayBefore));
-  start.setDate(start.getDate() - 6);
+  start.setDate(start.getDate() - (periodDays - 1));
   return { start, end };
+}
+
+function biweeklyAnchor(createdAt: string, payDay: number): Date {
+  const anchor = new Date(createdAt);
+  anchor.setHours(0, 0, 0, 0);
+  const anchorDow = anchor.getDay();
+  const offset = (payDay - anchorDow + 7) % 7;
+  anchor.setDate(anchor.getDate() + offset);
+  return anchor;
+}
+
+function isBiweeklyPayday(cellDate: Date, job: Job): boolean {
+  if (job.payDay == null) return false;
+  if (cellDate.getDay() !== job.payDay) return false;
+  const anchor = biweeklyAnchor(job.createdAt, job.payDay);
+  const cellStart = startOfDay(cellDate);
+  if (cellStart.getTime() < anchor.getTime()) return false;
+  const days = Math.round((cellStart.getTime() - anchor.getTime()) / 86400000);
+  return days % 14 === 0;
 }
 
 export default function CalendarPage() {
@@ -120,7 +142,7 @@ export default function CalendarPage() {
   }, []);
 
   const fetchSessions = useCallback(async (id: string, year: number, month: number) => {
-    // Fetch from start of previous month to cover monthly pay period display
+    // Fetch from start of previous month to cover monthly + biweekly pay period display
     const from = new Date(year, month - 1, 1);
     const to = new Date(year, month + 1, 0, 23, 59, 59);
     const res = await fetch(
@@ -178,6 +200,10 @@ export default function CalendarPage() {
     () => jobs.filter((j) => j.payFrequency === "weekly" && j.payDay != null),
     [jobs]
   );
+  const biweeklyJobs = useMemo(
+    () => jobs.filter((j) => j.payFrequency === "bi_weekly" && j.payDay != null),
+    [jobs]
+  );
   const monthlyJobs = useMemo(
     () => jobs.filter((j) => j.payFrequency === "monthly" && j.payDay != null),
     [jobs]
@@ -189,7 +215,17 @@ export default function CalendarPage() {
       const cellDow = day.getDay();
       for (const job of weeklyJobs) {
         if (job.payDay === cellDow) {
-          const { start, end } = weeklyPeriodForCell(day, job.payWeekStart);
+          const { start, end } = periodForCellWithSpan(day, job.payWeekStart, 7);
+          let cur = new Date(start);
+          while (cur <= end) {
+            set.add(localDateStr(cur));
+            cur.setDate(cur.getDate() + 1);
+          }
+        }
+      }
+      for (const job of biweeklyJobs) {
+        if (isBiweeklyPayday(day, job)) {
+          const { start, end } = periodForCellWithSpan(day, job.payWeekStart, 14);
           let cur = new Date(start);
           while (cur <= end) {
             set.add(localDateStr(cur));
@@ -199,7 +235,7 @@ export default function CalendarPage() {
       }
     }
     return set;
-  }, [calendarDays, weeklyJobs]);
+  }, [calendarDays, weeklyJobs, biweeklyJobs]);
 
   function getWeeklyBadge(cellDate: Date): { total: number; jobCount: number } | null {
     const cellDow = cellDate.getDay();
@@ -207,7 +243,7 @@ export default function CalendarPage() {
     if (matching.length === 0) return null;
 
     const total = matching.reduce((sum, job) => {
-      const { start, end } = weeklyPeriodForCell(cellDate, job.payWeekStart);
+      const { start, end } = periodForCellWithSpan(cellDate, job.payWeekStart, 7);
       const jobTotal = sessions
         .filter((s) => {
           const t = new Date(s.clockIn).getTime();
@@ -220,10 +256,25 @@ export default function CalendarPage() {
     return total > 0 ? { total, jobCount: matching.length } : null;
   }
 
+  function getBiweeklyBadge(cellDate: Date): { total: number; jobCount: number } | null {
+    const matching = biweeklyJobs.filter((j) => isBiweeklyPayday(cellDate, j));
+    if (matching.length === 0) return null;
+    const total = matching.reduce((sum, job) => {
+      const { start, end } = periodForCellWithSpan(cellDate, job.payWeekStart, 14);
+      const jobTotal = sessions
+        .filter((s) => {
+          const t = new Date(s.clockIn).getTime();
+          return s.jobId === job.id && t >= start.getTime() && t <= end.getTime();
+        })
+        .reduce((s2, s) => s2 + (calcSessionGross(s) ?? 0), 0);
+      return sum + jobTotal;
+    }, 0);
+    return total > 0 ? { total, jobCount: matching.length } : null;
+  }
+
   function getMonthlyBadge(cellDate: Date): { total: number; jobCount: number } | null {
     const matching = monthlyJobs.filter((j) => j.payDay === cellDate.getDate() && cellDate.getMonth() === viewMonth);
     if (matching.length === 0) return null;
-    // Show previous month's total
     const prevMonthStart = new Date(viewYear, viewMonth - 1, 1, 0, 0, 0);
     const prevMonthEnd = new Date(viewYear, viewMonth, 0, 23, 59, 59);
     const total = sessions
@@ -314,6 +365,7 @@ export default function CalendarPage() {
             const dayIncome = daySessions.reduce((sum, s) => sum + (calcSessionGross(s) ?? 0), 0);
             const hasIncome = daySessions.some((s) => calcSessionGross(s) !== null);
             const weeklyBadge = getWeeklyBadge(day);
+            const biweeklyBadge = getBiweeklyBadge(day);
             const monthlyBadge = getMonthlyBadge(day);
             const isSelected = selection?.type === "day" && selection.date === dateStr;
             const isFuture = day > new Date();
@@ -362,7 +414,7 @@ export default function CalendarPage() {
                 {weeklyBadge && (() => {
                   const cellDow = day.getDay();
                   const matchingJob = weeklyJobs.find((j) => j.payDay === cellDow);
-                  const { start, end } = weeklyPeriodForCell(day, matchingJob?.payWeekStart);
+                  const { start, end } = periodForCellWithSpan(day, matchingJob?.payWeekStart, 7);
                   const matchingJobIds = weeklyJobs.filter((j) => j.payDay === cellDow).map((j) => j.id);
                   const label = `${start.toLocaleDateString("zh-TW")} – ${end.toLocaleDateString("zh-TW")}`;
                   const isActive = selection?.type === "period" && selection.periodStart === start.toISOString();
@@ -379,6 +431,30 @@ export default function CalendarPage() {
                       className={`mt-0.5 px-1.5 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/40 text-[9px] text-amber-400 hover:bg-amber-500/30 transition-colors leading-tight w-full text-center ${isActive ? "ring-1 ring-amber-400/60" : ""}`}
                     >
                       ${weeklyBadge.total.toFixed(0)}
+                    </button>
+                  );
+                })()}
+
+                {/* Biweekly payout badge */}
+                {biweeklyBadge && (() => {
+                  const matchingJob = biweeklyJobs.find((j) => isBiweeklyPayday(day, j));
+                  const { start, end } = periodForCellWithSpan(day, matchingJob?.payWeekStart, 14);
+                  const matchingJobIds = biweeklyJobs.filter((j) => isBiweeklyPayday(day, j)).map((j) => j.id);
+                  const label = `${start.toLocaleDateString("zh-TW")} – ${end.toLocaleDateString("zh-TW")}`;
+                  const isActive = selection?.type === "period" && selection.periodStart === start.toISOString();
+                  return (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelection((prev) =>
+                          prev?.type === "period" && prev.periodStart === start.toISOString()
+                            ? null
+                            : { type: "period", jobIds: matchingJobIds, periodStart: start.toISOString(), periodEnd: end.toISOString(), payDayLabel: label }
+                        );
+                      }}
+                      className={`mt-0.5 px-1.5 py-0.5 rounded-md bg-cyan-500/20 border border-cyan-500/40 text-[9px] text-cyan-300 hover:bg-cyan-500/30 transition-colors leading-tight w-full text-center ${isActive ? "ring-1 ring-cyan-400/60" : ""}`}
+                    >
+                      ${biweeklyBadge.total.toFixed(0)}
                     </button>
                   );
                 })()}
@@ -414,7 +490,7 @@ export default function CalendarPage() {
         </div>
 
         {/* Legend */}
-        <div className="flex gap-4 mt-3 px-1">
+        <div className="flex flex-wrap gap-3 mt-3 px-1">
           <div className="flex items-center gap-1.5 text-xs text-gray-500">
             <div className="w-1.5 h-1.5 bg-green-400 rounded-full" />
             上班
@@ -422,13 +498,19 @@ export default function CalendarPage() {
           {weeklyJobs.length > 0 && (
             <div className="flex items-center gap-1.5 text-xs text-gray-500">
               <div className="w-3 h-3 rounded bg-amber-500/30 border border-amber-500/50" />
-              發薪日
+              週薪
+            </div>
+          )}
+          {biweeklyJobs.length > 0 && (
+            <div className="flex items-center gap-1.5 text-xs text-gray-500">
+              <div className="w-3 h-3 rounded bg-cyan-500/30 border border-cyan-500/50" />
+              雙週薪
             </div>
           )}
           {monthlyJobs.length > 0 && (
             <div className="flex items-center gap-1.5 text-xs text-gray-500">
               <div className="w-3 h-3 rounded bg-purple-500/30 border border-purple-500/50" />
-              月薪日
+              月薪
             </div>
           )}
         </div>
@@ -534,9 +616,13 @@ export default function CalendarPage() {
                   const isPeriod = selection.type === "period";
                   const hasTax = taxRate > 0 && detailData.sessions.some((s) => s.job.taxEnabled);
                   const net = detailData.sessions.reduce((sum, s) => sum + (calcSessionIncome(s, taxRate) ?? 0), 0);
-                  const label = !isPeriod ? "當日合計"
-                    : detailData.sessions.some((s) => selection.type === "period" && jobs.find((j) => j.id === s.jobId)?.payFrequency === "monthly") ? "月薪合計"
-                    : "週薪合計";
+                  let label = "當日合計";
+                  if (isPeriod) {
+                    const freqs = new Set(detailData.sessions.map((s) => jobs.find((j) => j.id === s.jobId)?.payFrequency));
+                    if (freqs.has("monthly")) label = "月薪合計";
+                    else if (freqs.has("bi_weekly")) label = "雙週薪合計";
+                    else label = "週薪合計";
+                  }
                   return (
                     <div className="px-4 py-3 border-t border-gray-700 bg-gray-900/40">
                       {isPeriod && hasTax ? (

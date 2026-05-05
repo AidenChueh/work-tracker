@@ -20,13 +20,15 @@ type Job = {
   breakDuration: number | null;
   breakRate: number | null;
   penaltyRatesEnabled: boolean;
-  penaltyBaseRate: number | null;
   publicHolidayRate: number;
   saturdayRate: number;
   sundayRate: number;
   saturdayHourlyRate: number | null;
   sundayHourlyRate: number | null;
   publicHolidayHourlyRate: number | null;
+  scheduleType: string;
+  fixedClockIn: string | null;
+  fixedClockOut: string | null;
   overtimeTiers: OvertimeTier[];
   createdAt: string;
 };
@@ -60,6 +62,13 @@ function fmtDate(iso: string): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
+function todayWithTime(time: string): Date {
+  const [h, m] = time.split(":").map((s) => parseInt(s, 10));
+  const d = new Date();
+  d.setHours(h || 0, m || 0, 0, 0);
+  return d;
+}
+
 export default function Home() {
   const { deviceId, userName, loaded } = useDevice();
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -70,6 +79,8 @@ export default function Home() {
   const [recentSessions, setRecentSessions] = useState<WorkSession[]>([]);
   const [dailyRevenue, setDailyRevenue] = useState("");
   const [isPublicHoliday, setIsPublicHoliday] = useState(false);
+  const [submittingFixed, setSubmittingFixed] = useState(false);
+  const [fixedFeedback, setFixedFeedback] = useState("");
 
   const fetchJobs = useCallback(async (id: string) => {
     const res = await fetch("/api/jobs", { headers: { "x-device-id": id } });
@@ -110,6 +121,10 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [activeSession]);
 
+  const selectedJob = jobs.find((j) => j.id === selectedJobId) ?? null;
+  const isFixedSchedule =
+    selectedJob?.scheduleType === "fixed" && !!selectedJob.fixedClockIn && !!selectedJob.fixedClockOut;
+
   const handleClockIn = async () => {
     if (!selectedJobId || !deviceId) return;
     const res = await fetch("/api/sessions", {
@@ -140,6 +155,36 @@ export default function Home() {
     }
   };
 
+  const handleFixedClockIn = async () => {
+    if (!selectedJob || !deviceId || !selectedJob.fixedClockIn || !selectedJob.fixedClockOut) return;
+    setSubmittingFixed(true);
+    setFixedFeedback("");
+    const clockIn = todayWithTime(selectedJob.fixedClockIn);
+    const clockOut = todayWithTime(selectedJob.fixedClockOut);
+    const body: Record<string, unknown> = {
+      jobId: selectedJob.id,
+      clockIn: clockIn.toISOString(),
+      clockOut: clockOut.toISOString(),
+    };
+    if (isPublicHoliday) body.isPublicHoliday = true;
+    if (selectedJob.commissionPercentage != null && dailyRevenue)
+      body.dailyRevenue = parseFloat(dailyRevenue);
+    const res = await fetch("/api/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-device-id": deviceId },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) {
+      setFixedFeedback(`已新增 ${selectedJob.name} 今日打卡：${selectedJob.fixedClockIn} – ${selectedJob.fixedClockOut}`);
+      setDailyRevenue("");
+      setIsPublicHoliday(false);
+      await fetchRecentSessions(deviceId);
+    } else {
+      setFixedFeedback("新增失敗，請稍後再試");
+    }
+    setSubmittingFixed(false);
+  };
+
   if (!loaded) return null;
 
   if (userName === null) {
@@ -162,7 +207,9 @@ export default function Home() {
   }
 
   const isCommissionJob = activeSession?.job.commissionPercentage != null;
+  const fixedIsCommission = selectedJob?.commissionPercentage != null;
   const clockOutDisabled = isCommissionJob && (activeSession?.job.commissionRequired ?? false) && !dailyRevenue;
+  const fixedDisabled = submittingFixed || (fixedIsCommission && (selectedJob?.commissionRequired ?? false) && !dailyRevenue);
 
   return (
     <main className="bg-gray-950 text-white">
@@ -182,45 +229,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Commission revenue input (before clock out) */}
-        {activeSession && isCommissionJob && (
-          <div className="bg-gray-800 rounded-2xl p-4 mb-4">
-            <label className="block text-sm text-gray-400 mb-1.5">
-              今日業績
-              {activeSession.job.commissionRequired
-                ? <span className="text-red-400 ml-1">（必填）</span>
-                : <span className="text-gray-500 ml-1">（選填）</span>
-              }
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
-              <input
-                type="number"
-                value={dailyRevenue}
-                onChange={(e) => setDailyRevenue(e.target.value)}
-                placeholder="0.00"
-                min="0"
-                step="0.01"
-                className="w-full bg-gray-700 rounded-xl pl-7 pr-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Public holiday toggle (penalty rates enabled) */}
-        {activeSession && activeSession.job.penaltyRatesEnabled && (
-          <div className="flex items-center justify-between bg-gray-800 rounded-2xl px-4 py-3 mb-4">
-            <span className="text-sm text-gray-300">國定假日</span>
-            <button
-              type="button"
-              onClick={() => setIsPublicHoliday((v) => !v)}
-              className={`relative inline-flex w-10 h-5 rounded-full transition-colors flex-shrink-0 ${isPublicHoliday ? "bg-amber-500" : "bg-gray-600"}`}
-            >
-              <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${isPublicHoliday ? "translate-x-5" : "translate-x-0"}`} />
-            </button>
-          </div>
-        )}
-
         {/* Job selector */}
         {!activeSession && (
           <div className="mb-4">
@@ -229,15 +237,21 @@ export default function Home() {
                 <label className="block text-xs text-gray-500 uppercase tracking-wide mb-2">選擇工作</label>
                 <select
                   value={selectedJobId}
-                  onChange={(e) => setSelectedJobId(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-base focus:outline-none focus:border-blue-500"
+                  onChange={(e) => { setSelectedJobId(e.target.value); setFixedFeedback(""); }}
+                  className="block w-full max-w-full min-w-0 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-base focus:outline-none focus:border-blue-500"
                 >
                   {jobs.map((job) => (
                     <option key={job.id} value={job.id}>
                       {job.name}{job.hourlyRate != null ? ` · $${job.hourlyRate}/hr` : ""}
+                      {job.scheduleType === "fixed" ? " · 固定" : ""}
                     </option>
                   ))}
                 </select>
+                {isFixedSchedule && selectedJob && (
+                  <p className="text-xs text-gray-500 mt-2">
+                    固定班表：{selectedJob.fixedClockIn} – {selectedJob.fixedClockOut}
+                  </p>
+                )}
               </>
             ) : (
               <div className="text-center py-4">
@@ -253,8 +267,65 @@ export default function Home() {
           </div>
         )}
 
-        {/* Clock in/out button */}
-        {(jobs.length > 0 || activeSession) && (
+        {/* Commission revenue input */}
+        {((activeSession && isCommissionJob) || (!activeSession && isFixedSchedule && fixedIsCommission)) && (
+          <div className="bg-gray-800 rounded-2xl p-4 mb-4">
+            <label className="block text-sm text-gray-400 mb-1.5">
+              今日業績
+              {(activeSession?.job.commissionRequired ?? selectedJob?.commissionRequired)
+                ? <span className="text-red-400 ml-1">（必填）</span>
+                : <span className="text-gray-500 ml-1">（選填）</span>
+              }
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+              <input
+                type="number"
+                value={dailyRevenue}
+                onChange={(e) => setDailyRevenue(e.target.value)}
+                onFocus={(e) => e.target.select()}
+                placeholder="0.00"
+                min="0"
+                step="0.01"
+                className="block w-full max-w-full min-w-0 bg-gray-700 rounded-xl pl-7 pr-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Public holiday toggle */}
+        {((activeSession && activeSession.job.penaltyRatesEnabled) ||
+          (!activeSession && isFixedSchedule && selectedJob?.penaltyRatesEnabled)) && (
+          <div className="flex items-center justify-between bg-gray-800 rounded-2xl px-4 py-3 mb-4">
+            <span className="text-sm text-gray-300">國定假日</span>
+            <button
+              type="button"
+              onClick={() => setIsPublicHoliday((v) => !v)}
+              className={`relative inline-flex w-10 h-5 rounded-full transition-colors flex-shrink-0 ${isPublicHoliday ? "bg-amber-500" : "bg-gray-600"}`}
+            >
+              <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${isPublicHoliday ? "translate-x-5" : "translate-x-0"}`} />
+            </button>
+          </div>
+        )}
+
+        {/* Fixed schedule add button */}
+        {!activeSession && isFixedSchedule && (
+          <>
+            <button
+              onClick={handleFixedClockIn}
+              disabled={fixedDisabled}
+              className="w-full py-5 rounded-2xl text-xl font-bold transition-all mt-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {submittingFixed ? "新增中..." : "新增今日打卡"}
+            </button>
+            {fixedFeedback && (
+              <p className="text-xs text-center text-green-400 mt-2">{fixedFeedback}</p>
+            )}
+          </>
+        )}
+
+        {/* Flexible: clock in/out */}
+        {!isFixedSchedule && (jobs.length > 0 || activeSession) && (
           <button
             onClick={activeSession ? handleClockOut : handleClockIn}
             disabled={(!activeSession && !selectedJobId) || (activeSession ? clockOutDisabled : false)}
