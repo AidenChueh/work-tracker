@@ -136,6 +136,7 @@ export default function RecordsPage() {
   const [editClockInTime, setEditClockInTime] = useState("");
   const [editClockOutDate, setEditClockOutDate] = useState("");
   const [editClockOutTime, setEditClockOutTime] = useState("");
+  const [editDailyRevenue, setEditDailyRevenue] = useState("");
   const [editSubmitting, setEditSubmitting] = useState(false);
 
   useEffect(() => {
@@ -219,6 +220,18 @@ export default function RecordsPage() {
   const selectedAddJob = jobs.find((j) => j.id === addJobId);
   const isAddCommission = selectedAddJob?.commissionPercentage != null;
 
+  useEffect(() => {
+    if (!selectedAddJob) return;
+    if (
+      selectedAddJob.scheduleType === "fixed" &&
+      selectedAddJob.fixedClockIn &&
+      selectedAddJob.fixedClockOut
+    ) {
+      setAddStart(selectedAddJob.fixedClockIn);
+      setAddEnd(selectedAddJob.fixedClockOut);
+    }
+  }, [selectedAddJob]);
+
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!deviceId || !addJobId || !addDate || !addStart || !addEnd) return;
@@ -251,17 +264,22 @@ export default function RecordsPage() {
     const outLocal = s.clockOut ? toDatetimeLocal(s.clockOut) : inLocal;
     setEditClockOutDate(outLocal.slice(0, 10));
     setEditClockOutTime(outLocal.slice(11, 16));
+    setEditDailyRevenue(s.dailyRevenue != null ? String(s.dailyRevenue) : "");
   }
 
   async function handleEdit(e: React.FormEvent) {
     e.preventDefault();
     if (!deviceId || !editingId) return;
     setEditSubmitting(true);
-    const body: Record<string, string> = {};
+    const editing = sessions.find((s) => s.id === editingId);
+    const body: Record<string, unknown> = {};
     if (editClockInDate && editClockInTime)
       body.clockIn = new Date(`${editClockInDate}T${editClockInTime}`).toISOString();
     if (editClockOutDate && editClockOutTime)
       body.clockOut = new Date(`${editClockOutDate}T${editClockOutTime}`).toISOString();
+    if (editing?.job.commissionPercentage != null) {
+      body.dailyRevenue = editDailyRevenue === "" ? null : parseFloat(editDailyRevenue);
+    }
     const res = await fetch(`/api/sessions/${editingId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json", "x-device-id": deviceId },
@@ -499,6 +517,7 @@ export default function RecordsPage() {
                               const gross = calcSessionGross(s);
 
                               if (editingId === s.id) {
+                                const isEditCommission = s.job.commissionPercentage != null;
                                 return (
                                   <form
                                     key={s.id}
@@ -512,7 +531,11 @@ export default function RecordsPage() {
                                           <input
                                             type="date"
                                             value={editClockInDate}
-                                            onChange={(e) => setEditClockInDate(e.target.value)}
+                                            onChange={(e) => {
+                                              const v = e.target.value;
+                                              setEditClockInDate(v);
+                                              setEditClockOutDate(v);
+                                            }}
                                             required
                                             className="block w-full max-w-full min-w-0 box-border bg-gray-600 rounded-lg px-1.5 py-1.5 text-xs text-white"
                                           />
@@ -535,7 +558,11 @@ export default function RecordsPage() {
                                           <input
                                             type="date"
                                             value={editClockOutDate}
-                                            onChange={(e) => setEditClockOutDate(e.target.value)}
+                                            onChange={(e) => {
+                                              const v = e.target.value;
+                                              setEditClockOutDate(v);
+                                              setEditClockInDate(v);
+                                            }}
                                             required
                                             className="block w-full max-w-full min-w-0 box-border bg-gray-600 rounded-lg px-1.5 py-1.5 text-xs text-white"
                                           />
@@ -551,6 +578,31 @@ export default function RecordsPage() {
                                         </div>
                                       </div>
                                     </div>
+                                    {isEditCommission && (
+                                      <div>
+                                        <label className="text-xs text-gray-400 block mb-1">
+                                          {t("records.todayRevenue")}
+                                          {s.job.commissionRequired
+                                            ? <span className="text-red-400 ml-1">{t("common.required")}</span>
+                                            : <span className="text-gray-500 ml-1">{t("common.optional")}</span>
+                                          }
+                                        </label>
+                                        <div className="relative">
+                                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
+                                          <input
+                                            type="number"
+                                            value={editDailyRevenue}
+                                            onChange={(e) => setEditDailyRevenue(e.target.value)}
+                                            onFocus={(e) => e.target.select()}
+                                            placeholder="0.00"
+                                            min="0"
+                                            step="0.01"
+                                            required={s.job.commissionRequired}
+                                            className="block w-full max-w-full min-w-0 box-border bg-gray-600 rounded-lg pl-6 pr-2 py-1.5 text-xs text-white placeholder-gray-400"
+                                          />
+                                        </div>
+                                      </div>
+                                    )}
                                     <div className="flex gap-2">
                                       <button
                                         type="button"

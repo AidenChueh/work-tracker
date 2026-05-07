@@ -264,7 +264,7 @@ export default function CalendarPage() {
           const t = new Date(s.clockIn).getTime();
           return s.jobId === job.id && t >= start.getTime() && t <= end.getTime();
         })
-        .reduce((s2, s) => s2 + (calcSessionGross(s) ?? 0), 0);
+        .reduce((s2, s) => s2 + (calcSessionIncome(s, taxRate) ?? 0), 0);
       return sum + jobTotal;
     }, 0);
 
@@ -281,7 +281,7 @@ export default function CalendarPage() {
           const t = new Date(s.clockIn).getTime();
           return s.jobId === job.id && t >= start.getTime() && t <= end.getTime();
         })
-        .reduce((s2, s) => s2 + (calcSessionGross(s) ?? 0), 0);
+        .reduce((s2, s) => s2 + (calcSessionIncome(s, taxRate) ?? 0), 0);
       return sum + jobTotal;
     }, 0);
     return total > 0 ? { total, jobCount: matching.length } : null;
@@ -298,7 +298,7 @@ export default function CalendarPage() {
         const t = new Date(s.clockIn).getTime();
         return t >= prevMonthStart.getTime() && t <= prevMonthEnd.getTime();
       })
-      .reduce((sum, s) => sum + (calcSessionGross(s) ?? 0), 0);
+      .reduce((sum, s) => sum + (calcSessionIncome(s, taxRate) ?? 0), 0);
     return total > 0 ? { total, jobCount: matching.length } : null;
   }
 
@@ -630,7 +630,6 @@ export default function CalendarPage() {
                   if (!hasIncome) return null;
                   const gross = detailData.sessions.reduce((sum, s) => sum + (calcSessionGross(s) ?? 0), 0);
                   const isPeriod = selection.type === "period";
-                  const hasTax = taxRate > 0 && detailData.sessions.some((s) => s.job.taxEnabled);
                   const net = detailData.sessions.reduce((sum, s) => sum + (calcSessionIncome(s, taxRate) ?? 0), 0);
                   let label = t("cal.dayTotal");
                   if (isPeriod) {
@@ -639,14 +638,29 @@ export default function CalendarPage() {
                     else if (freqs.has("bi_weekly")) label = t("cal.biweeklyTotal");
                     else label = t("cal.weeklyTotal");
                   }
+                  const totalHoursMs = isPeriod
+                    ? detailData.sessions.reduce((sum, s) => {
+                        if (!s.clockOut) return sum;
+                        const workedMs = new Date(s.clockOut).getTime() - new Date(s.clockIn).getTime();
+                        const unpaidMs = s.breaks
+                          .filter((b) => !b.isPaid && b.endTime)
+                          .reduce((u, b) => u + (new Date(b.endTime!).getTime() - new Date(b.startTime).getTime()), 0);
+                        return sum + (workedMs - unpaidMs);
+                      }, 0)
+                    : 0;
+                  const totalHoursNum = totalHoursMs / 3600000;
+                  const hoursStr =
+                    totalHoursNum === Math.floor(totalHoursNum)
+                      ? String(totalHoursNum)
+                      : (Math.round(totalHoursNum * 10) / 10).toString();
                   return (
                     <div className="px-4 py-3 border-t border-gray-700 bg-gray-900/40">
-                      {isPeriod && hasTax ? (
+                      {isPeriod ? (
                         <div className="flex justify-between items-center">
                           <span className="text-sm text-gray-400">{label}</span>
                           <div className="text-right">
-                            <div className="text-xs text-gray-500">{t("cal.preTax", { amount: gross.toFixed(2) })}</div>
-                            <div className="text-base font-bold text-green-400">{t("cal.postTax", { amount: net.toFixed(2) })}</div>
+                            <div className="text-xs text-gray-400">{t("cal.hoursTotal", { hours: hoursStr })}</div>
+                            <div className="text-base font-bold text-green-400">${net.toFixed(2)}</div>
                           </div>
                         </div>
                       ) : (
