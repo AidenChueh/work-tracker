@@ -48,6 +48,7 @@ const zh: Dict = {
   "home.recent": "最近紀錄",
   "home.editName": "編輯名字",
   "home.fixedTag": "固定",
+  "home.clockFailed": "操作失敗，請稍後再試",
 
   // jobs
   "jobs.title": "工作管理",
@@ -137,6 +138,7 @@ const zh: Dict = {
   "records.payDayLabel": "發薪日 {date}",
   "records.deleteConfirm": "確定要刪除這筆紀錄嗎？",
   "records.preTax": "稅前 ${amount}",
+  "records.timeError": "下班時間必須晚於上班時間",
 
   // calendar
   "cal.legend.work": "上班",
@@ -219,6 +221,7 @@ const en: Dict = {
   "home.recent": "Recent",
   "home.editName": "Edit name",
   "home.fixedTag": "fixed",
+  "home.clockFailed": "Operation failed. Try again.",
 
   // jobs
   "jobs.title": "Jobs",
@@ -308,6 +311,7 @@ const en: Dict = {
   "records.payDayLabel": "Payday {date}",
   "records.deleteConfirm": "Delete this record?",
   "records.preTax": "Pre-tax ${amount}",
+  "records.timeError": "End time must be after start time",
 
   // calendar
   "cal.legend.work": "Work",

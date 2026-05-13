@@ -7,44 +7,7 @@ import { LocaleToggle } from "@/components/LocaleToggle";
 import { useDevice } from "@/hooks/useDevice";
 import { useLocale } from "@/hooks/useLocale";
 import { calcSessionGross } from "@/lib/income";
-import type { OvertimeTier } from "@/lib/income";
-
-type Job = {
-  id: string;
-  name: string;
-  hourlyRate: number | null;
-  commissionPercentage: number | null;
-  commissionRequired: boolean;
-  payFrequency: string;
-  payDay: number | null;
-  payWeekStart: number | null;
-  taxEnabled: boolean;
-  breakDuration: number | null;
-  breakRate: number | null;
-  penaltyRatesEnabled: boolean;
-  publicHolidayRate: number;
-  saturdayRate: number;
-  sundayRate: number;
-  saturdayHourlyRate: number | null;
-  sundayHourlyRate: number | null;
-  publicHolidayHourlyRate: number | null;
-  scheduleType: string;
-  fixedClockIn: string | null;
-  fixedClockOut: string | null;
-  overtimeTiers: OvertimeTier[];
-  createdAt: string;
-};
-
-type WorkSession = {
-  id: string;
-  jobId: string;
-  job: Job;
-  clockIn: string;
-  clockOut: string | null;
-  isPublicHoliday: boolean;
-  dailyRevenue: number | null;
-  breaks: { id: string; startTime: string; endTime: string | null; isPaid: boolean }[];
-};
+import type { Job, WorkSession } from "@/types/api";
 
 function formatDuration(ms: number): string {
   const s = Math.floor(ms / 1000);
@@ -86,6 +49,7 @@ export default function Home() {
   const [fixedFeedback, setFixedFeedback] = useState("");
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
+  const [clockError, setClockError] = useState("");
 
   const fetchJobs = useCallback(async (id: string) => {
     const res = await fetch("/api/jobs", { headers: { "x-device-id": id } });
@@ -132,16 +96,24 @@ export default function Home() {
 
   const handleClockIn = async () => {
     if (!selectedJobId || !deviceId) return;
+    setClockError("");
     const res = await fetch("/api/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-device-id": deviceId },
       body: JSON.stringify({ jobId: selectedJobId }),
     });
-    if (res.ok) { setActiveSession(await res.json()); setElapsed(0); }
+    if (res.ok) {
+      setActiveSession(await res.json());
+      setElapsed(0);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setClockError(data.error ?? t("home.clockFailed"));
+    }
   };
 
   const handleClockOut = async () => {
     if (!activeSession || !deviceId) return;
+    setClockError("");
     const body: Record<string, unknown> = { clockOut: "now" };
     if (isPublicHoliday) body.isPublicHoliday = true;
     if (dailyRevenue) body.dailyRevenue = parseFloat(dailyRevenue);
@@ -157,6 +129,9 @@ export default function Home() {
       setDailyRevenue("");
       setIsPublicHoliday(false);
       fetchRecentSessions(deviceId);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setClockError(data.error ?? t("home.clockFailed"));
     }
   };
 
@@ -212,10 +187,7 @@ export default function Home() {
   if (userName === null) {
     return (
       <OnboardingForm
-        onComplete={(name) => {
-          localStorage.setItem("userName", name);
-          window.location.reload();
-        }}
+        onComplete={(name) => setUserName(name)}
       />
     );
   }
@@ -404,6 +376,10 @@ export default function Home() {
           >
             {activeSession ? t("home.clockOut") : t("home.clockIn")}
           </button>
+        )}
+
+        {clockError && (
+          <p className="text-xs text-center text-red-400 mt-2">{clockError}</p>
         )}
 
         {/* Recent sessions */}

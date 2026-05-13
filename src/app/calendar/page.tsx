@@ -1,53 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, type Dispatch, type SetStateAction } from "react";
 import { useDevice } from "@/hooks/useDevice";
 import { useLocale } from "@/hooks/useLocale";
 import { calcSessionIncome, calcSessionGross } from "@/lib/income";
-
-type Job = {
-  id: string;
-  name: string;
-  hourlyRate: number | null;
-  commissionPercentage: number | null;
-  commissionRequired: boolean;
-  payFrequency: string;
-  payDay: number | null;
-  payWeekStart: number | null;
-  taxEnabled: boolean;
-  overtimeTiers: { afterHours: number; rate: number }[];
-  breakDuration: number | null;
-  breakRate: number | null;
-  penaltyRatesEnabled: boolean;
-  publicHolidayRate: number;
-  saturdayRate: number;
-  sundayRate: number;
-  saturdayHourlyRate: number | null;
-  sundayHourlyRate: number | null;
-  publicHolidayHourlyRate: number | null;
-  scheduleType: string;
-  fixedClockIn: string | null;
-  fixedClockOut: string | null;
-  createdAt: string;
-};
-
-type Break = {
-  id: string;
-  startTime: string;
-  endTime: string | null;
-  isPaid: boolean;
-};
-
-type WorkSession = {
-  id: string;
-  jobId: string;
-  job: Job;
-  clockIn: string;
-  clockOut: string | null;
-  isPublicHoliday: boolean;
-  dailyRevenue: number | null;
-  breaks: Break[];
-};
+import type { Job, WorkSession } from "@/types/api";
 
 type PeriodKind = "weekly" | "biweekly" | "monthly";
 
@@ -133,6 +90,41 @@ function isBiweeklyPayday(cellDate: Date, job: Job): boolean {
   if (cellStart.getTime() < anchor.getTime()) return false;
   const days = Math.round((cellStart.getTime() - anchor.getTime()) / 86400000);
   return days % 14 === 0;
+}
+
+type BadgeCellProps = {
+  total: number;
+  kind: PeriodKind;
+  periodStart: Date;
+  periodEnd: Date;
+  periodLabel: string;
+  matchingJobIds: string[];
+  selection: SelectionMode | null;
+  setSelection: Dispatch<SetStateAction<SelectionMode | null>>;
+};
+
+function BadgeCell({ total, kind, periodStart, periodEnd, periodLabel, matchingJobIds, selection, setSelection }: BadgeCellProps) {
+  const isActive = selection?.type === "period" && selection.periodStart === periodStart.toISOString();
+  const styles: Record<string, string> = {
+    weekly: "bg-amber-500/20 border-amber-500/40 text-amber-400 hover:bg-amber-500/30 ring-amber-400/60",
+    biweekly: "bg-cyan-500/20 border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/30 ring-cyan-400/60",
+    monthly: "bg-purple-500/20 border-purple-500/40 text-purple-400 hover:bg-purple-500/30 ring-purple-400/60",
+  };
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        setSelection((prev) =>
+          prev?.type === "period" && prev.periodStart === periodStart.toISOString()
+            ? null
+            : { type: "period", jobIds: matchingJobIds, periodStart: periodStart.toISOString(), periodEnd: periodEnd.toISOString(), payDayLabel: periodLabel, kind }
+        );
+      }}
+      className={`mt-0.5 px-1.5 py-0.5 rounded-md border text-[9px] transition-colors leading-tight w-full text-center ${styles[kind]} ${isActive ? "ring-1" : ""}`}
+    >
+      ${total.toFixed(0)}
+    </button>
+  );
 }
 
 export default function CalendarPage() {
@@ -224,7 +216,7 @@ export default function CalendarPage() {
     [jobs]
   );
 
-  const payPeriodDaySet = useMemo(() => {
+  const weeklyPeriodDaySet = useMemo(() => {
     const set = new Set<string>();
     for (const day of calendarDays) {
       const cellDow = day.getDay();
@@ -232,25 +224,26 @@ export default function CalendarPage() {
         if (job.payDay === cellDow) {
           const { start, end } = periodForCellWithSpan(day, job.payWeekStart, 7);
           let cur = new Date(start);
-          while (cur <= end) {
-            set.add(localDateStr(cur));
-            cur.setDate(cur.getDate() + 1);
-          }
-        }
-      }
-      for (const job of biweeklyJobs) {
-        if (isBiweeklyPayday(day, job)) {
-          const { start, end } = periodForCellWithSpan(day, job.payWeekStart, 14);
-          let cur = new Date(start);
-          while (cur <= end) {
-            set.add(localDateStr(cur));
-            cur.setDate(cur.getDate() + 1);
-          }
+          while (cur <= end) { set.add(localDateStr(cur)); cur.setDate(cur.getDate() + 1); }
         }
       }
     }
     return set;
-  }, [calendarDays, weeklyJobs, biweeklyJobs]);
+  }, [calendarDays, weeklyJobs]);
+
+  const biweeklyPeriodDaySet = useMemo(() => {
+    const set = new Set<string>();
+    for (const day of calendarDays) {
+      for (const job of biweeklyJobs) {
+        if (isBiweeklyPayday(day, job)) {
+          const { start, end } = periodForCellWithSpan(day, job.payWeekStart, 14);
+          let cur = new Date(start);
+          while (cur <= end) { set.add(localDateStr(cur)); cur.setDate(cur.getDate() + 1); }
+        }
+      }
+    }
+    return set;
+  }, [calendarDays, biweeklyJobs]);
 
   function getWeeklyBadge(cellDate: Date): { total: number; jobCount: number } | null {
     const cellDow = cellDate.getDay();
@@ -378,7 +371,7 @@ export default function CalendarPage() {
             const isCurrentMonth = day.getMonth() === viewMonth;
             const isToday = dateStr === todayStr;
             const daySessions = sessionsByDay.get(dateStr) ?? [];
-            const dayIncome = daySessions.reduce((sum, s) => sum + (calcSessionGross(s) ?? 0), 0);
+            const dayIncome = daySessions.reduce((sum, s) => sum + (calcSessionIncome(s, taxRate) ?? 0), 0);
             const hasIncome = daySessions.some((s) => calcSessionGross(s) !== null);
             const weeklyBadge = getWeeklyBadge(day);
             const biweeklyBadge = getBiweeklyBadge(day);
@@ -386,12 +379,15 @@ export default function CalendarPage() {
             const isSelected = selection?.type === "day" && selection.date === dateStr;
             const isFuture = day > new Date();
             const isClickable = isCurrentMonth && !isFuture && daySessions.length > 0;
-            const isInPeriod = payPeriodDaySet.has(dateStr);
             const isInSelectedPeriod = selection?.type === "period"
               && startOfDay(day).getTime() >= new Date(selection.periodStart).getTime()
               && startOfDay(day).getTime() <= new Date(selection.periodEnd).getTime();
             const selectedBg = isInSelectedPeriod && selection?.type === "period" ? PERIOD_BG[selection.kind] : "";
-            const faintBg = isInPeriod ? PERIOD_BG_FAINT.weekly : "";
+            const faintBg = biweeklyPeriodDaySet.has(dateStr)
+              ? PERIOD_BG_FAINT.biweekly
+              : weeklyPeriodDaySet.has(dateStr)
+              ? PERIOD_BG_FAINT.weekly
+              : "";
 
             return (
               <div
@@ -428,80 +424,51 @@ export default function CalendarPage() {
                   </span>
                 )}
 
-                {/* Weekly payout badge */}
                 {weeklyBadge && (() => {
                   const cellDow = day.getDay();
                   const matchingJob = weeklyJobs.find((j) => j.payDay === cellDow);
                   const { start, end } = periodForCellWithSpan(day, matchingJob?.payWeekStart, 7);
-                  const matchingJobIds = weeklyJobs.filter((j) => j.payDay === cellDow).map((j) => j.id);
                   const localeStr = locale === "en" ? "en-US" : "zh-TW";
-                  const label = `${start.toLocaleDateString(localeStr)} – ${end.toLocaleDateString(localeStr)}`;
-                  const isActive = selection?.type === "period" && selection.periodStart === start.toISOString();
                   return (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelection((prev) =>
-                          prev?.type === "period" && prev.periodStart === start.toISOString()
-                            ? null
-                            : { type: "period", jobIds: matchingJobIds, periodStart: start.toISOString(), periodEnd: end.toISOString(), payDayLabel: label, kind: "weekly" }
-                        );
-                      }}
-                      className={`mt-0.5 px-1.5 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/40 text-[9px] text-amber-400 hover:bg-amber-500/30 transition-colors leading-tight w-full text-center ${isActive ? "ring-1 ring-amber-400/60" : ""}`}
-                    >
-                      ${weeklyBadge.total.toFixed(0)}
-                    </button>
+                    <BadgeCell
+                      total={weeklyBadge.total} kind="weekly"
+                      periodStart={start} periodEnd={end}
+                      periodLabel={`${start.toLocaleDateString(localeStr)} – ${end.toLocaleDateString(localeStr)}`}
+                      matchingJobIds={weeklyJobs.filter((j) => j.payDay === cellDow).map((j) => j.id)}
+                      selection={selection} setSelection={setSelection}
+                    />
                   );
                 })()}
 
-                {/* Biweekly payout badge */}
                 {biweeklyBadge && (() => {
                   const matchingJob = biweeklyJobs.find((j) => isBiweeklyPayday(day, j));
                   const { start, end } = periodForCellWithSpan(day, matchingJob?.payWeekStart, 14);
-                  const matchingJobIds = biweeklyJobs.filter((j) => isBiweeklyPayday(day, j)).map((j) => j.id);
                   const localeStr = locale === "en" ? "en-US" : "zh-TW";
-                  const label = `${start.toLocaleDateString(localeStr)} – ${end.toLocaleDateString(localeStr)}`;
-                  const isActive = selection?.type === "period" && selection.periodStart === start.toISOString();
                   return (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelection((prev) =>
-                          prev?.type === "period" && prev.periodStart === start.toISOString()
-                            ? null
-                            : { type: "period", jobIds: matchingJobIds, periodStart: start.toISOString(), periodEnd: end.toISOString(), payDayLabel: label, kind: "biweekly" }
-                        );
-                      }}
-                      className={`mt-0.5 px-1.5 py-0.5 rounded-md bg-cyan-500/20 border border-cyan-500/40 text-[9px] text-cyan-300 hover:bg-cyan-500/30 transition-colors leading-tight w-full text-center ${isActive ? "ring-1 ring-cyan-400/60" : ""}`}
-                    >
-                      ${biweeklyBadge.total.toFixed(0)}
-                    </button>
+                    <BadgeCell
+                      total={biweeklyBadge.total} kind="biweekly"
+                      periodStart={start} periodEnd={end}
+                      periodLabel={`${start.toLocaleDateString(localeStr)} – ${end.toLocaleDateString(localeStr)}`}
+                      matchingJobIds={biweeklyJobs.filter((j) => isBiweeklyPayday(day, j)).map((j) => j.id)}
+                      selection={selection} setSelection={setSelection}
+                    />
                   );
                 })()}
 
-                {/* Monthly payout badge */}
                 {monthlyBadge && (() => {
-                  const prevMonthStart = new Date(viewYear, viewMonth - 1, 1).toISOString();
-                  const prevMonthEnd = new Date(viewYear, viewMonth, 0, 23, 59, 59).toISOString();
+                  const prevMonthStart = new Date(viewYear, viewMonth - 1, 1);
+                  const prevMonthEnd = new Date(viewYear, viewMonth, 0, 23, 59, 59);
                   const prevMonth = viewMonth === 0 ? 12 : viewMonth;
                   const prevYear = viewMonth === 0 ? viewYear - 1 : viewYear;
                   const label = locale === "en" ? `${monthsEn[prevMonth - 1]} ${prevYear}` : `${prevYear}年${prevMonth}月`;
-                  const matchingJobIds = monthlyJobs.filter((j) => j.payDay === day.getDate() && day.getMonth() === viewMonth).map((j) => j.id);
-                  const isActive = selection?.type === "period" && selection.periodStart === prevMonthStart;
                   return (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelection((prev) =>
-                          prev?.type === "period" && prev.periodStart === prevMonthStart
-                            ? null
-                            : { type: "period", jobIds: matchingJobIds, periodStart: prevMonthStart, periodEnd: prevMonthEnd, payDayLabel: label, kind: "monthly" }
-                        );
-                      }}
-                      className={`mt-0.5 px-1.5 py-0.5 rounded-md bg-purple-500/20 border border-purple-500/40 text-[9px] text-purple-400 hover:bg-purple-500/30 transition-colors leading-tight w-full text-center ${isActive ? "ring-1 ring-purple-400/60" : ""}`}
-                    >
-                      ${monthlyBadge.total.toFixed(0)}
-                    </button>
+                    <BadgeCell
+                      total={monthlyBadge.total} kind="monthly"
+                      periodStart={prevMonthStart} periodEnd={prevMonthEnd}
+                      periodLabel={label}
+                      matchingJobIds={monthlyJobs.filter((j) => j.payDay === day.getDate() && day.getMonth() === viewMonth).map((j) => j.id)}
+                      selection={selection} setSelection={setSelection}
+                    />
                   );
                 })()}
               </div>

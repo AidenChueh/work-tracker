@@ -15,13 +15,28 @@ export async function PATCH(
   if (!session) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   const body = await req.json();
-  if (body.clockOut === "now") body.clockOut = new Date();
-  if (body.clockIn && typeof body.clockIn === "string") body.clockIn = new Date(body.clockIn);
-  if (body.clockOut && typeof body.clockOut === "string") body.clockOut = new Date(body.clockOut);
+
+  let clockIn: Date | undefined;
+  let clockOut: Date | undefined;
+  if (body.clockIn) clockIn = new Date(body.clockIn);
+  if (body.clockOut === "now") clockOut = new Date();
+  else if (body.clockOut) clockOut = new Date(body.clockOut);
+
+  const resolvedIn = clockIn ?? session.clockIn;
+  const resolvedOut = clockOut ?? session.clockOut;
+  if (resolvedOut && resolvedOut <= resolvedIn) {
+    return NextResponse.json({ error: "clockOut must be after clockIn" }, { status: 400 });
+  }
+
+  const data: Record<string, unknown> = {};
+  if (clockIn !== undefined) data.clockIn = clockIn;
+  if (clockOut !== undefined) data.clockOut = clockOut;
+  if (body.isPublicHoliday !== undefined) data.isPublicHoliday = body.isPublicHoliday;
+  if (body.dailyRevenue !== undefined) data.dailyRevenue = body.dailyRevenue;
 
   const updated = await prisma.workSession.update({
     where: { id },
-    data: body,
+    data,
     include: { job: { include: { overtimeTiers: { orderBy: { afterHours: "asc" } } } }, breaks: true },
   });
 

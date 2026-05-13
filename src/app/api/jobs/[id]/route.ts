@@ -14,12 +14,22 @@ export async function PATCH(
   const job = await prisma.job.findFirst({ where: { id, deviceId } });
   if (!job) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  const { overtimeTiers, ...rest } = await req.json();
+  const body = await req.json();
+  const { overtimeTiers } = body;
+
+  const ALLOWED = new Set([
+    "name", "hourlyRate", "commissionPercentage", "commissionRequired",
+    "payFrequency", "payDay", "payWeekStart", "taxEnabled", "breakDuration", "breakRate",
+    "penaltyRatesEnabled", "publicHolidayRate", "saturdayRate", "sundayRate",
+    "saturdayHourlyRate", "sundayHourlyRate", "publicHolidayHourlyRate",
+    "scheduleType", "fixedClockIn", "fixedClockOut", "isActive",
+  ]);
+  const safeFields = Object.fromEntries(Object.entries(body).filter(([k]) => ALLOWED.has(k)));
 
   const updated = await prisma.job.update({
     where: { id },
     data: {
-      ...rest,
+      ...safeFields,
       ...(overtimeTiers !== undefined && {
         overtimeTiers: {
           deleteMany: {},

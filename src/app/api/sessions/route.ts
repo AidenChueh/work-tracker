@@ -41,6 +41,10 @@ export async function POST(req: NextRequest) {
   const { jobId, clockIn, clockOut, isPublicHoliday, dailyRevenue } = await req.json();
   if (!jobId) return NextResponse.json({ error: "jobId required" }, { status: 400 });
 
+  if (clockIn && clockOut && new Date(clockOut) <= new Date(clockIn)) {
+    return NextResponse.json({ error: "clockOut must be after clockIn" }, { status: 400 });
+  }
+
   // Only block concurrent active session if this is a real clock-in (no clockIn provided)
   if (!clockIn) {
     const activeSession = await prisma.workSession.findFirst({

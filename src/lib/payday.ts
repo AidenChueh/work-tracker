@@ -80,10 +80,10 @@ export function getPayPeriodStart(job: Job): Date | null {
     }
     case "monthly": {
       if (job.payDay === null) return null;
-      const now = new Date();
-      const thisMonthPayday = new Date(now.getFullYear(), now.getMonth(), job.payDay);
-      if (thisMonthPayday <= now) return thisMonthPayday;
-      return new Date(now.getFullYear(), now.getMonth() - 1, job.payDay);
+      const current = new Date();
+      const thisMonthPayday = new Date(current.getFullYear(), current.getMonth(), job.payDay);
+      if (thisMonthPayday <= current) return thisMonthPayday;
+      return new Date(current.getFullYear(), current.getMonth() - 1, job.payDay);
     }
     default:
       return null;

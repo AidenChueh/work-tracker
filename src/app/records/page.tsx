@@ -4,46 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useDevice } from "@/hooks/useDevice";
 import { useLocale } from "@/hooks/useLocale";
 import { calcSessionIncome, calcSessionGross } from "@/lib/income";
-
-type OvertimeTier = { afterHours: number; rate: number };
-
-type Job = {
-  id: string;
-  name: string;
-  hourlyRate: number | null;
-  commissionPercentage: number | null;
-  commissionRequired: boolean;
-  payFrequency: string;
-  payDay: number | null;
-  payWeekStart: number | null;
-  taxEnabled: boolean;
-  breakDuration: number | null;
-  breakRate: number | null;
-  penaltyRatesEnabled: boolean;
-  publicHolidayRate: number;
-  saturdayRate: number;
-  sundayRate: number;
-  saturdayHourlyRate: number | null;
-  sundayHourlyRate: number | null;
-  publicHolidayHourlyRate: number | null;
-  scheduleType: string;
-  fixedClockIn: string | null;
-  fixedClockOut: string | null;
-  overtimeTiers: OvertimeTier[];
-};
-
-type Break = { id: string; startTime: string; endTime: string | null; isPaid: boolean };
-
-type WorkSession = {
-  id: string;
-  jobId: string;
-  job: Job;
-  clockIn: string;
-  clockOut: string | null;
-  isPublicHoliday: boolean;
-  dailyRevenue: number | null;
-  breaks: Break[];
-};
+import type { Job, WorkSession } from "@/types/api";
 
 function localDateStr(date: Date): string {
   return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
@@ -138,6 +99,8 @@ export default function RecordsPage() {
   const [editClockOutTime, setEditClockOutTime] = useState("");
   const [editDailyRevenue, setEditDailyRevenue] = useState("");
   const [editSubmitting, setEditSubmitting] = useState(false);
+  const [addTimeError, setAddTimeError] = useState("");
+  const [editTimeError, setEditTimeError] = useState("");
 
   useEffect(() => {
     const stored = parseFloat(localStorage.getItem("taxRate") ?? "0");
@@ -235,10 +198,15 @@ export default function RecordsPage() {
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!deviceId || !addJobId || !addDate || !addStart || !addEnd) return;
+    const inDate = new Date(`${addDate}T${addStart}`);
+    const outDate = new Date(`${addDate}T${addEnd}`);
+    if (outDate <= inDate) {
+      setAddTimeError(t("records.timeError"));
+      return;
+    }
+    setAddTimeError("");
     setAddSubmitting(true);
-    const clockIn = new Date(`${addDate}T${addStart}`).toISOString();
-    const clockOut = new Date(`${addDate}T${addEnd}`).toISOString();
-    const body: Record<string, unknown> = { jobId: addJobId, clockIn, clockOut };
+    const body: Record<string, unknown> = { jobId: addJobId, clockIn: inDate.toISOString(), clockOut: outDate.toISOString() };
     if (isAddCommission && addDailyRevenue) body.dailyRevenue = parseFloat(addDailyRevenue);
     const res = await fetch("/api/sessions", {
       method: "POST",
@@ -270,6 +238,15 @@ export default function RecordsPage() {
   async function handleEdit(e: React.FormEvent) {
     e.preventDefault();
     if (!deviceId || !editingId) return;
+    if (editClockInDate && editClockInTime && editClockOutDate && editClockOutTime) {
+      const inDate = new Date(`${editClockInDate}T${editClockInTime}`);
+      const outDate = new Date(`${editClockOutDate}T${editClockOutTime}`);
+      if (outDate <= inDate) {
+        setEditTimeError(t("records.timeError"));
+        return;
+      }
+    }
+    setEditTimeError("");
     setEditSubmitting(true);
     const editing = sessions.find((s) => s.id === editingId);
     const body: Record<string, unknown> = {};
@@ -295,11 +272,13 @@ export default function RecordsPage() {
   async function handleDelete(id: string) {
     if (!deviceId) return;
     if (!window.confirm(t("records.deleteConfirm"))) return;
-    setSessions((prev) => prev.filter((s) => s.id !== id));
-    await fetch(`/api/sessions/${id}`, {
+    const res = await fetch(`/api/sessions/${id}`, {
       method: "DELETE",
       headers: { "x-device-id": deviceId },
     });
+    if (res.ok) {
+      setSessions((prev) => prev.filter((s) => s.id !== id));
+    }
   }
 
   if (!loaded || loading) {
@@ -399,6 +378,9 @@ export default function RecordsPage() {
                   />
                 </div>
               </div>
+            )}
+            {addTimeError && (
+              <p className="text-xs text-red-400">{addTimeError}</p>
             )}
             <div className="flex gap-2 pt-1">
               <button
@@ -602,6 +584,9 @@ export default function RecordsPage() {
                                           />
                                         </div>
                                       </div>
+                                    )}
+                                    {editTimeError && (
+                                      <p className="text-xs text-red-400">{editTimeError}</p>
                                     )}
                                     <div className="flex gap-2">
                                       <button
