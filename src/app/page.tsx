@@ -45,6 +45,7 @@ export default function Home() {
   const [recentSessions, setRecentSessions] = useState<WorkSession[]>([]);
   const [dailyRevenue, setDailyRevenue] = useState("");
   const [isPublicHoliday, setIsPublicHoliday] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [submittingFixed, setSubmittingFixed] = useState(false);
   const [fixedFeedback, setFixedFeedback] = useState("");
   const [editingName, setEditingName] = useState(false);
@@ -95,8 +96,9 @@ export default function Home() {
     selectedJob?.scheduleType === "fixed" && !!selectedJob.fixedClockIn && !!selectedJob.fixedClockOut;
 
   const handleClockIn = async () => {
-    if (!selectedJobId || !deviceId) return;
+    if (!selectedJobId || !deviceId || submitting) return;
     setClockError("");
+    setSubmitting(true);
     const res = await fetch("/api/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-device-id": deviceId },
@@ -109,11 +111,13 @@ export default function Home() {
       const data = await res.json().catch(() => ({}));
       setClockError(data.error ?? t("home.clockFailed"));
     }
+    setSubmitting(false);
   };
 
   const handleClockOut = async () => {
-    if (!activeSession || !deviceId) return;
+    if (!activeSession || !deviceId || submitting) return;
     setClockError("");
+    setSubmitting(true);
     const body: Record<string, unknown> = { clockOut: "now" };
     if (isPublicHoliday) body.isPublicHoliday = true;
     if (dailyRevenue) body.dailyRevenue = parseFloat(dailyRevenue);
@@ -133,6 +137,7 @@ export default function Home() {
       const data = await res.json().catch(() => ({}));
       setClockError(data.error ?? t("home.clockFailed"));
     }
+    setSubmitting(false);
   };
 
   const handleFixedClockIn = async () => {
@@ -367,14 +372,14 @@ export default function Home() {
         {!isFixedSchedule && (jobs.length > 0 || activeSession) && (
           <button
             onClick={activeSession ? handleClockOut : handleClockIn}
-            disabled={(!activeSession && !selectedJobId) || (activeSession ? clockOutDisabled : false)}
-            className={`w-full py-5 rounded-2xl text-xl font-bold transition-all mt-2 ${
+            disabled={submitting || (!activeSession && !selectedJobId) || (activeSession ? clockOutDisabled : false)}
+            className={`w-full py-5 rounded-2xl text-xl font-bold transition-all mt-2 disabled:opacity-50 disabled:cursor-not-allowed ${
               activeSession
                 ? "bg-red-600 hover:bg-red-700 active:bg-red-800"
-                : "bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                : "bg-blue-600 hover:bg-blue-700 active:bg-blue-800"
             }`}
           >
-            {activeSession ? t("home.clockOut") : t("home.clockIn")}
+            {submitting ? t("common.loading") : activeSession ? t("home.clockOut") : t("home.clockIn")}
           </button>
         )}
 
