@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   }
 
   const limitParam = req.nextUrl.searchParams.get("limit");
-  const take = limitParam ? parseInt(limitParam) : 100;
+  const take = limitParam ? (parseInt(limitParam) || 100) : 100;
 
   const sessions = await prisma.workSession.findMany({
     where,

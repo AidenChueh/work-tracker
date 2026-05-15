@@ -132,7 +132,7 @@ export default function Home() {
       setElapsed(0);
       setDailyRevenue("");
       setIsPublicHoliday(false);
-      fetchRecentSessions(deviceId);
+      fetchRecentSessions(deviceId).catch(() => {});
     } else {
       const data = await res.json().catch(() => ({}));
       setClockError(data.error ?? t("home.clockFailed"));

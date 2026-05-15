@@ -2,34 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useLocale } from "@/hooks/useLocale";
+import type { Job } from "@/types/api";
 
 type OvertimeTier = { afterHours: string; rate: string };
-
-type Job = {
-  id: string;
-  name: string;
-  hourlyRate: number | null;
-  commissionPercentage: number | null;
-  commissionRequired: boolean;
-  payFrequency: string;
-  payDay: number | null;
-  payWeekStart: number | null;
-  taxEnabled: boolean;
-  overtimeTiers: { id: string; afterHours: number; rate: number }[];
-  breakDuration: number | null;
-  breakRate: number | null;
-  penaltyRatesEnabled: boolean;
-  publicHolidayRate: number;
-  saturdayRate: number;
-  sundayRate: number;
-  saturdayHourlyRate: number | null;
-  sundayHourlyRate: number | null;
-  publicHolidayHourlyRate: number | null;
-  scheduleType: string;
-  fixedClockIn: string | null;
-  fixedClockOut: string | null;
-  createdAt: string;
-};
 
 type Props = {
   job: Job;

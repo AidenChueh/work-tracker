@@ -61,7 +61,7 @@ export function calcSessionGross(session: SessionBase): number | null {
     .filter((b) => !b.isPaid && b.endTime)
     .reduce((sum, b) => sum + (new Date(b.endTime!).getTime() - new Date(b.startTime).getTime()), 0);
   const jobBreakMs = (breakDuration ?? 0) * 60000;
-  const workingHours = (totalMs - manualUnpaidMs - jobBreakMs) / 3600000;
+  const workingHours = Math.max(0, (totalMs - manualUnpaidMs - jobBreakMs) / 3600000);
 
   const sorted = [...overtimeTiers].sort((a, b) => a.afterHours - b.afterHours);
   const breakpoints = [0, ...sorted.map((t) => t.afterHours)];

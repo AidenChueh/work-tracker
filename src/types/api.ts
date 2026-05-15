@@ -1,5 +1,8 @@
-import type { OvertimeTier } from "@/lib/income";
-export type { OvertimeTier };
+export type OvertimeTier = {
+  id: string;
+  afterHours: number;
+  rate: number;
+};
 
 export type Break = {
   id: string;

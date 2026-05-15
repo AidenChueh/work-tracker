@@ -35,3 +35,11 @@ tsconfig.tsbuildinfo
 # claude / test artifacts
 .claude/
 .playwright-mcp/
+
+# debug screenshots
+/problem/
+
+# claude project files
+CLAUDE.md
+CHANGELOG.zh.md
+/docs/
