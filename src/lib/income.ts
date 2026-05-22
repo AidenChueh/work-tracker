@@ -26,41 +26,52 @@ export type SessionBase = {
   clockIn: string;
   clockOut: string | null;
   job: JobBase;
+  payRulesSnapshot?: JobBase | null;
+  breakMinutes?: number | null;
   breaks: BreakBase[];
   isPublicHoliday: boolean;
   dailyRevenue: number | null;
 };
 
+// 有快照時用快照（凍結當下的薪資規則），否則用工作的即時設定
+export function payRules(session: SessionBase): JobBase {
+  return session.payRulesSnapshot ?? session.job;
+}
+
 function getEffectiveHourlyRate(session: SessionBase): number | null {
-  if (session.job.hourlyRate == null) return null;
-  if (!session.job.penaltyRatesEnabled) return session.job.hourlyRate;
+  const job = payRules(session);
+  if (job.hourlyRate == null) return null;
+  if (!job.penaltyRatesEnabled) return job.hourlyRate;
   if (session.isPublicHoliday) {
-    return session.job.publicHolidayHourlyRate ?? session.job.hourlyRate * session.job.publicHolidayRate;
+    return job.publicHolidayHourlyRate ?? job.hourlyRate * job.publicHolidayRate;
   }
   const dow = new Date(session.clockIn).getDay();
-  if (dow === 0) return session.job.sundayHourlyRate ?? session.job.hourlyRate * session.job.sundayRate;
-  if (dow === 6) return session.job.saturdayHourlyRate ?? session.job.hourlyRate * session.job.saturdayRate;
-  return session.job.hourlyRate;
+  if (dow === 0) return job.sundayHourlyRate ?? job.hourlyRate * job.sundayRate;
+  if (dow === 6) return job.saturdayHourlyRate ?? job.hourlyRate * job.saturdayRate;
+  return job.hourlyRate;
 }
 
 export function calcSessionGross(session: SessionBase): number | null {
   if (!session.clockOut) return null;
 
-  if (session.job.commissionPercentage != null) {
+  const job = payRules(session);
+
+  if (job.commissionPercentage != null) {
     if (session.dailyRevenue == null) return null;
-    return session.dailyRevenue * session.job.commissionPercentage;
+    return session.dailyRevenue * job.commissionPercentage;
   }
 
   const effectiveBase = getEffectiveHourlyRate(session);
   if (effectiveBase == null) return null;
 
-  const { breakDuration, breakRate, overtimeTiers } = session.job;
+  const { breakDuration, breakRate, overtimeTiers } = job;
 
   const totalMs = new Date(session.clockOut).getTime() - new Date(session.clockIn).getTime();
   const manualUnpaidMs = session.breaks
     .filter((b) => !b.isPaid && b.endTime)
     .reduce((sum, b) => sum + (new Date(b.endTime!).getTime() - new Date(b.startTime).getTime()), 0);
-  const jobBreakMs = (breakDuration ?? 0) * 60000;
+  // breakMinutes 為此筆紀錄的覆寫值，未設定時用工作預設 breakDuration
+  const jobBreakMs = (session.breakMinutes ?? breakDuration ?? 0) * 60000;
   const workingHours = Math.max(0, (totalMs - manualUnpaidMs - jobBreakMs) / 3600000);
 
   const sorted = [...overtimeTiers].sort((a, b) => a.afterHours - b.afterHours);
@@ -82,5 +93,5 @@ export function calcSessionGross(session: SessionBase): number | null {
 export function calcSessionIncome(session: SessionBase, taxRate: number): number | null {
   const gross = calcSessionGross(session);
   if (gross === null) return null;
-  return session.job.taxEnabled && taxRate > 0 ? gross * (1 - taxRate / 100) : gross;
+  return payRules(session).taxEnabled && taxRate > 0 ? gross * (1 - taxRate / 100) : gross;
 }

@@ -1,3 +1,5 @@
+import type { JobBase } from "@/lib/income";
+
 export type OvertimeTier = {
   id: string;
   afterHours: number;
@@ -45,5 +47,7 @@ export type WorkSession = {
   clockOut: string | null;
   isPublicHoliday: boolean;
   dailyRevenue: number | null;
+  breakMinutes: number | null;
+  payRulesSnapshot: JobBase | null;
   breaks: Break[];
 };

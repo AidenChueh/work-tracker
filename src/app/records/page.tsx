@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useDevice } from "@/hooks/useDevice";
 import { useLocale } from "@/hooks/useLocale";
-import { calcSessionIncome, calcSessionGross } from "@/lib/income";
+import { calcSessionIncome, calcSessionGross, payRules } from "@/lib/income";
 import type { Job, WorkSession } from "@/types/api";
 
 function localDateStr(date: Date): string {
@@ -98,6 +98,7 @@ export default function RecordsPage() {
   const [editClockOutDate, setEditClockOutDate] = useState("");
   const [editClockOutTime, setEditClockOutTime] = useState("");
   const [editDailyRevenue, setEditDailyRevenue] = useState("");
+  const [editBreakMinutes, setEditBreakMinutes] = useState("");
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [addTimeError, setAddTimeError] = useState("");
   const [editTimeError, setEditTimeError] = useState("");
@@ -233,6 +234,7 @@ export default function RecordsPage() {
     setEditClockOutDate(outLocal.slice(0, 10));
     setEditClockOutTime(outLocal.slice(11, 16));
     setEditDailyRevenue(s.dailyRevenue != null ? String(s.dailyRevenue) : "");
+    setEditBreakMinutes(s.breakMinutes != null ? String(s.breakMinutes) : "");
   }
 
   async function handleEdit(e: React.FormEvent) {
@@ -256,6 +258,9 @@ export default function RecordsPage() {
       body.clockOut = new Date(`${editClockOutDate}T${editClockOutTime}`).toISOString();
     if (editing?.job.commissionPercentage != null) {
       body.dailyRevenue = editDailyRevenue === "" ? null : parseFloat(editDailyRevenue);
+    } else if (editing) {
+      const bm = parseInt(editBreakMinutes);
+      body.breakMinutes = editBreakMinutes.trim() === "" || isNaN(bm) ? null : Math.max(0, bm);
     }
     const res = await fetch(`/api/sessions/${editingId}`, {
       method: "PATCH",
@@ -560,6 +565,22 @@ export default function RecordsPage() {
                                         </div>
                                       </div>
                                     </div>
+                                    {!isEditCommission && (
+                                      <div>
+                                        <label className="text-xs text-gray-400 block mb-1">{t("records.breakMinutes")}</label>
+                                        <input
+                                          type="number"
+                                          value={editBreakMinutes}
+                                          onChange={(e) => setEditBreakMinutes(e.target.value)}
+                                          onFocus={(e) => e.target.select()}
+                                          placeholder={String(payRules(s).breakDuration ?? 0)}
+                                          min="0"
+                                          step="1"
+                                          className="block w-full max-w-full min-w-0 box-border bg-gray-600 rounded-lg px-2 py-1.5 text-xs text-white placeholder-gray-400"
+                                        />
+                                        <p className="text-[10px] text-gray-500 mt-0.5">{t("records.breakHint", { min: payRules(s).breakDuration ?? 0 })}</p>
+                                      </div>
+                                    )}
                                     {isEditCommission && (
                                       <div>
                                         <label className="text-xs text-gray-400 block mb-1">

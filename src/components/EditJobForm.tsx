@@ -69,6 +69,8 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [errors, setErrors] = useState<{ hourlyRate?: string; payDay?: string; commissionPercentage?: string }>({});
+  const [showScope, setShowScope] = useState(false);
+  const [pendingBody, setPendingBody] = useState<Record<string, unknown> | null>(null);
 
   const initRef = useRef(true);
 
@@ -115,39 +117,83 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
       return;
     }
     setErrors({});
-    setSubmitting(true);
 
+    const body = buildBody();
+    // 薪資規則有變動且該工作已有紀錄時，先問要套用到哪些紀錄
+    if (payRulesChanged(body)) {
+      setSubmitting(true);
+      const res = await fetch(`/api/sessions?jobId=${job.id}&limit=1`, {
+        headers: { "x-device-id": deviceId },
+      });
+      const list = res.ok ? await res.json() : [];
+      setSubmitting(false);
+      if (Array.isArray(list) && list.length > 0) {
+        setPendingBody(body);
+        setShowScope(true);
+        return;
+      }
+    }
+    await doSave(body);
+  };
+
+  const buildBody = () => ({
+    name: name.trim(),
+    hourlyRate: payType === "hourly" ? parseFloat(hourlyRate) || null : null,
+    commissionPercentage:
+      payType === "commission" ? parseFloat(commissionPercentage) / 100 || null : null,
+    commissionRequired: payType === "commission" ? commissionRequired : false,
+    scheduleType,
+    fixedClockIn: scheduleType === "fixed" ? fixedClockIn : null,
+    fixedClockOut: scheduleType === "fixed" ? fixedClockOut : null,
+    payFrequency,
+    payDay: payDay !== "" ? parseInt(payDay) : null,
+    payWeekStart: payWeekStart !== "" ? parseInt(payWeekStart) : null,
+    taxEnabled,
+    overtimeTiers: overtimeTiers
+      .filter((t) => t.afterHours !== "" && t.rate !== "")
+      .map((t) => ({ afterHours: parseFloat(t.afterHours), rate: parseFloat(t.rate) })),
+    breakDuration: hasBreak ? parseInt(breakDuration) || null : null,
+    breakRate: hasBreak ? parseFloat(breakRate) || null : null,
+    penaltyRatesEnabled,
+    publicHolidayRate: parseFloat(publicHolidayRate) || 2.5,
+    saturdayRate: parseFloat(saturdayRate) || 1.5,
+    sundayRate: parseFloat(sundayRate) || 2.0,
+    saturdayHourlyRate: saturdayHourlyRate ? parseFloat(saturdayHourlyRate) : null,
+    sundayHourlyRate: sundayHourlyRate ? parseFloat(sundayHourlyRate) : null,
+    publicHolidayHourlyRate: publicHolidayHourlyRate ? parseFloat(publicHolidayHourlyRate) : null,
+  });
+
+  const payRulesChanged = (body: ReturnType<typeof buildBody>): boolean => {
+    const eq = (a: number | boolean | null, b: number | boolean | null) => (a ?? null) === (b ?? null);
+    if (
+      !eq(body.hourlyRate, job.hourlyRate) ||
+      !eq(body.commissionPercentage, job.commissionPercentage) ||
+      !eq(body.taxEnabled, job.taxEnabled) ||
+      !eq(body.breakDuration, job.breakDuration) ||
+      !eq(body.breakRate, job.breakRate) ||
+      !eq(body.penaltyRatesEnabled, job.penaltyRatesEnabled) ||
+      !eq(body.publicHolidayRate, job.publicHolidayRate) ||
+      !eq(body.saturdayRate, job.saturdayRate) ||
+      !eq(body.sundayRate, job.sundayRate) ||
+      !eq(body.saturdayHourlyRate, job.saturdayHourlyRate) ||
+      !eq(body.sundayHourlyRate, job.sundayHourlyRate) ||
+      !eq(body.publicHolidayHourlyRate, job.publicHolidayHourlyRate)
+    ) return true;
+    const norm = (ts: { afterHours: number; rate: number }[]) =>
+      JSON.stringify(
+        ts.map((t) => ({ afterHours: t.afterHours, rate: t.rate }))
+          .sort((a, b) => a.afterHours - b.afterHours || a.rate - b.rate)
+      );
+    return norm(body.overtimeTiers) !== norm(job.overtimeTiers);
+  };
+
+  const doSave = async (body: Record<string, unknown>, applyToPast?: boolean) => {
+    setSubmitting(true);
     const res = await fetch(`/api/jobs/${job.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json", "x-device-id": deviceId },
-      body: JSON.stringify({
-        name: name.trim(),
-        hourlyRate: payType === "hourly" ? parseFloat(hourlyRate) || null : null,
-        commissionPercentage:
-          payType === "commission" ? parseFloat(commissionPercentage) / 100 || null : null,
-        commissionRequired: payType === "commission" ? commissionRequired : false,
-        scheduleType,
-        fixedClockIn: scheduleType === "fixed" ? fixedClockIn : null,
-        fixedClockOut: scheduleType === "fixed" ? fixedClockOut : null,
-        payFrequency,
-        payDay: payDay !== "" ? parseInt(payDay) : null,
-        payWeekStart: payWeekStart !== "" ? parseInt(payWeekStart) : null,
-        taxEnabled,
-        overtimeTiers: overtimeTiers
-          .filter((t) => t.afterHours !== "" && t.rate !== "")
-          .map((t) => ({ afterHours: parseFloat(t.afterHours), rate: parseFloat(t.rate) })),
-        breakDuration: hasBreak ? parseInt(breakDuration) || null : null,
-        breakRate: hasBreak ? parseFloat(breakRate) || null : null,
-        penaltyRatesEnabled,
-        publicHolidayRate: parseFloat(publicHolidayRate) || 2.5,
-        saturdayRate: parseFloat(saturdayRate) || 1.5,
-        sundayRate: parseFloat(sundayRate) || 2.0,
-        saturdayHourlyRate: saturdayHourlyRate ? parseFloat(saturdayHourlyRate) : null,
-        sundayHourlyRate: sundayHourlyRate ? parseFloat(sundayHourlyRate) : null,
-        publicHolidayHourlyRate: publicHolidayHourlyRate ? parseFloat(publicHolidayHourlyRate) : null,
-      }),
+      body: JSON.stringify(applyToPast === undefined ? body : { ...body, applyToPast }),
     });
-
     if (res.ok) onSaved(await res.json());
     setSubmitting(false);
   };
@@ -488,31 +534,66 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
         <Toggle checked={taxEnabled} onChange={() => setTaxEnabled((v) => !v)} />
       </div>
 
-      <div className="flex gap-2 pt-1">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="flex-1 py-2 rounded-lg bg-gray-600 text-gray-300 hover:bg-gray-500 text-sm transition-colors"
-        >
-          {t("common.cancel")}
-        </button>
-        <button
-          type="submit"
-          disabled={submitting || !name.trim()}
-          className="flex-1 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
-        >
-          {submitting ? t("common.saving") : t("common.save")}
-        </button>
-      </div>
+      {showScope ? (
+        <div className="bg-gray-800 rounded-xl p-3 space-y-2">
+          <p className="text-sm text-gray-200 font-medium">{t("form.scopeTitle")}</p>
+          <p className="text-xs text-gray-400">{t("form.scopeDesc")}</p>
+          <button
+            type="button"
+            onClick={() => pendingBody && doSave(pendingBody, true)}
+            disabled={submitting}
+            className="w-full text-left px-3 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-50 transition-colors"
+          >
+            <span className="block text-sm text-white">{t("form.scopeAll")}</span>
+            <span className="block text-[10px] text-gray-400">{t("form.scopeAllDesc")}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => pendingBody && doSave(pendingBody, false)}
+            disabled={submitting}
+            className="w-full text-left px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          >
+            <span className="block text-sm text-white">{t("form.scopeFuture")}</span>
+            <span className="block text-[10px] text-blue-200">{t("form.scopeFutureDesc")}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setShowScope(false); setPendingBody(null); }}
+            disabled={submitting}
+            className="w-full py-1.5 text-xs text-gray-400 hover:text-white transition-colors disabled:opacity-50"
+          >
+            {t("common.cancel")}
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="flex-1 py-2 rounded-lg bg-gray-600 text-gray-300 hover:bg-gray-500 text-sm transition-colors"
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || !name.trim()}
+              className="flex-1 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              {submitting ? t("common.saving") : t("common.save")}
+            </button>
+          </div>
 
-      <button
-        type="button"
-        onClick={handleDelete}
-        disabled={deleting}
-        className="w-full text-xs text-red-400 hover:text-red-300 py-1 transition-colors disabled:opacity-50"
-      >
-        {deleting ? t("common.deleting") : t("form.deleteThis")}
-      </button>
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={deleting}
+            className="w-full text-xs text-red-400 hover:text-red-300 py-1 transition-colors disabled:opacity-50"
+          >
+            {deleting ? t("common.deleting") : t("form.deleteThis")}
+          </button>
+        </>
+      )}
     </form>
   );
 }

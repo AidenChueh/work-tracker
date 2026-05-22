@@ -118,6 +118,12 @@ const zh: Dict = {
   "form.errPayDayWeek": "請選擇發薪日",
   "form.errPayDayMonth": "請輸入發薪日（幾號）",
   "form.errPayDayRange": "發薪日需介於 1–31",
+  "form.scopeTitle": "薪資設定已變動",
+  "form.scopeDesc": "要如何套用到先前的打卡紀錄？",
+  "form.scopeAll": "套用至所有紀錄",
+  "form.scopeAllDesc": "舊紀錄一併用新規則重算",
+  "form.scopeFuture": "僅之後的紀錄",
+  "form.scopeFutureDesc": "舊紀錄維持原本的算法",
 
   // records
   "records.title": "打卡紀錄",
@@ -139,6 +145,8 @@ const zh: Dict = {
   "records.deleteConfirm": "確定要刪除這筆紀錄嗎？",
   "records.preTax": "稅前 ${amount}",
   "records.timeError": "下班時間必須晚於上班時間",
+  "records.breakMinutes": "休息時間（分鐘）",
+  "records.breakHint": "留空 = 用工作預設 {min} 分",
 
   // calendar
   "cal.legend.work": "上班",
@@ -291,6 +299,12 @@ const en: Dict = {
   "form.errPayDayWeek": "Please pick a payday",
   "form.errPayDayMonth": "Please enter the payday",
   "form.errPayDayRange": "Payday must be 1–31",
+  "form.scopeTitle": "Pay settings changed",
+  "form.scopeDesc": "How should this apply to existing records?",
+  "form.scopeAll": "Apply to all records",
+  "form.scopeAllDesc": "Recalculate old records with new rules",
+  "form.scopeFuture": "Only future records",
+  "form.scopeFutureDesc": "Old records keep their original calculation",
 
   // records
   "records.title": "Records",
@@ -312,6 +326,8 @@ const en: Dict = {
   "records.deleteConfirm": "Delete this record?",
   "records.preTax": "Pre-tax ${amount}",
   "records.timeError": "End time must be after start time",
+  "records.breakMinutes": "Break (minutes)",
+  "records.breakHint": "Empty = job default {min} min",
 
   // calendar
   "cal.legend.work": "Work",

@@ -33,6 +33,13 @@ export async function PATCH(
   if (clockOut !== undefined) data.clockOut = clockOut;
   if (body.isPublicHoliday !== undefined) data.isPublicHoliday = body.isPublicHoliday;
   if (body.dailyRevenue !== undefined) data.dailyRevenue = body.dailyRevenue;
+  if (body.breakMinutes !== undefined) {
+    const bm = body.breakMinutes;
+    if (bm !== null && (typeof bm !== "number" || bm < 0)) {
+      return NextResponse.json({ error: "breakMinutes must be a non-negative number" }, { status: 400 });
+    }
+    data.breakMinutes = bm;
+  }
 
   const updated = await prisma.workSession.update({
     where: { id },

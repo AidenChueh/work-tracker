@@ -65,6 +65,8 @@ model WorkSession {
   notes           String?
   isPublicHoliday Boolean   @default(false)
   dailyRevenue    Float?
+  breakMinutes    Int?
+  payRulesSnapshot Json?
   createdAt       DateTime  @default(now())
   breaks          Break[]
 }
