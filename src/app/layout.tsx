@@ -16,6 +16,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${inter.className} h-full overflow-hidden flex flex-col bg-gray-950 text-white`}>
         <div className="flex-1 min-h-0 overflow-y-auto">
           {children}
+          <p className="text-center text-[10px] text-gray-600 py-2">
+            {process.env.NEXT_PUBLIC_APP_VERSION} · {process.env.NEXT_PUBLIC_BUILD_COMMIT} · {process.env.NEXT_PUBLIC_BUILD_DATE}
+          </p>
         </div>
         <AppNav />
       </body>
