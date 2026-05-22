@@ -45,6 +45,7 @@ export type WorkSession = {
   job: Job;
   clockIn: string;
   clockOut: string | null;
+  notes: string | null;
   isPublicHoliday: boolean;
   dailyRevenue: number | null;
   breakMinutes: number | null;

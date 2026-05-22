@@ -48,6 +48,7 @@ function makeSession(job: Job, overrides: Partial<WorkSession> = {}): WorkSessio
     job,
     clockIn: "2026-05-20T09:00:00.000Z",
     clockOut: "2026-05-20T17:00:00.000Z",
+    notes: null,
     isPublicHoliday: false,
     dailyRevenue: null,
     breakMinutes: null,
@@ -81,5 +82,41 @@ describe("RecordsPage — 編輯紀錄休息欄位", () => {
     fireEvent.click(await screen.findByText("編輯"));
     expect(screen.queryByText("休息時間（分鐘）")).not.toBeInTheDocument();
     expect(screen.getByText(/今日業績/)).toBeInTheDocument();
+  });
+});
+
+describe("RecordsPage — 備註欄位", () => {
+  it("新增表單顯示備註欄位", async () => {
+    const job = makeJob();
+    setFetch([job], []);
+    render(<RecordsPage />);
+    fireEvent.click(await screen.findByText("+ 新增"));
+    expect(screen.getByPlaceholderText("選填，記點什麼…")).toBeInTheDocument();
+  });
+
+  it("新增表單日期預設為今天", async () => {
+    const job = makeJob();
+    setFetch([job], []);
+    render(<RecordsPage />);
+    fireEvent.click(await screen.findByText("+ 新增"));
+    const d = new Date();
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const dateInput = document.querySelector('input[type="date"]') as HTMLInputElement;
+    expect(dateInput.value).toBe(today);
+  });
+
+  it("編輯表單顯示備註欄位", async () => {
+    const job = makeJob();
+    setFetch([job], [makeSession(job)]);
+    render(<RecordsPage />);
+    fireEvent.click(await screen.findByText("編輯"));
+    expect(screen.getByPlaceholderText("選填，記點什麼…")).toBeInTheDocument();
+  });
+
+  it("有備註的紀錄會在列表顯示備註內容", async () => {
+    const job = makeJob();
+    setFetch([job], [makeSession(job, { notes: "今天很忙" })]);
+    render(<RecordsPage />);
+    expect(await screen.findByText("今天很忙")).toBeInTheDocument();
   });
 });

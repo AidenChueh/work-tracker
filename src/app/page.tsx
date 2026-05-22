@@ -44,6 +44,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [recentSessions, setRecentSessions] = useState<WorkSession[]>([]);
   const [dailyRevenue, setDailyRevenue] = useState("");
+  const [notes, setNotes] = useState("");
   const [isPublicHoliday, setIsPublicHoliday] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submittingFixed, setSubmittingFixed] = useState(false);
@@ -121,6 +122,7 @@ export default function Home() {
     const body: Record<string, unknown> = { clockOut: "now" };
     if (isPublicHoliday) body.isPublicHoliday = true;
     if (dailyRevenue) body.dailyRevenue = parseFloat(dailyRevenue);
+    if (notes.trim()) body.notes = notes.trim();
 
     const res = await fetch(`/api/sessions/${activeSession.id}`, {
       method: "PATCH",
@@ -131,6 +133,7 @@ export default function Home() {
       setActiveSession(null);
       setElapsed(0);
       setDailyRevenue("");
+      setNotes("");
       setIsPublicHoliday(false);
       fetchRecentSessions(deviceId).catch(() => {});
     } else {
@@ -352,6 +355,20 @@ export default function Home() {
           </div>
         )}
 
+        {/* Notes (shown while clocked in, saved on clock-out) */}
+        {activeSession && (
+          <div className="bg-gray-800 rounded-2xl p-4 mb-4">
+            <label className="block text-sm text-gray-400 mb-1.5">{t("common.notes")}</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder={t("common.notesPlaceholder")}
+              rows={2}
+              className="block w-full max-w-full min-w-0 box-border bg-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
+          </div>
+        )}
+
         {/* Fixed schedule add button */}
         {!activeSession && isFixedSchedule && (
           <>
@@ -398,8 +415,8 @@ export default function Home() {
                   : 0;
                 const gross = calcSessionGross(session);
                 return (
-                  <div key={session.id} className="bg-gray-800 rounded-xl p-4 flex justify-between items-center">
-                    <div>
+                  <div key={session.id} className="bg-gray-800 rounded-xl p-4 flex justify-between items-center gap-3">
+                    <div className="min-w-0">
                       <p className="font-medium">{session.job.name}</p>
                       <p className="text-gray-400 text-sm">
                         {fmtDate(session.clockIn)} {fmtTime(session.clockIn)}
@@ -408,8 +425,11 @@ export default function Home() {
                       {gross !== null && (
                         <p className="text-green-400 text-sm mt-0.5">${gross.toFixed(2)}</p>
                       )}
+                      {session.notes && (
+                        <p className="text-gray-500 text-xs mt-0.5 truncate">{session.notes}</p>
+                      )}
                     </div>
-                    <p className="font-mono text-gray-300 text-sm">{formatDuration(duration)}</p>
+                    <p className="font-mono text-gray-300 text-sm shrink-0">{formatDuration(duration)}</p>
                   </div>
                 );
               })}

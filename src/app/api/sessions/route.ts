@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "x-device-id required" }, { status: 400 });
   }
 
-  const { jobId, clockIn, clockOut, isPublicHoliday, dailyRevenue } = await req.json();
+  const { jobId, clockIn, clockOut, isPublicHoliday, dailyRevenue, notes } = await req.json();
   if (!jobId) return NextResponse.json({ error: "jobId required" }, { status: 400 });
 
   if (clockIn && clockOut && new Date(clockOut) <= new Date(clockIn)) {
@@ -68,6 +68,7 @@ export async function POST(req: NextRequest) {
       clockOut: clockOut ? new Date(clockOut) : undefined,
       isPublicHoliday: isPublicHoliday ?? false,
       dailyRevenue: dailyRevenue ?? null,
+      notes: typeof notes === "string" && notes.trim() !== "" ? notes.trim() : null,
     },
     include: { job: { include: { overtimeTiers: { orderBy: { afterHours: "asc" } } } }, breaks: true },
   });

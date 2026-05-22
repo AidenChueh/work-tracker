@@ -10,6 +10,11 @@ function localDateStr(date: Date): string {
   return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
 }
 
+function todayInputStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function toDatetimeLocal(isoString: string): string {
   const d = new Date(isoString);
   const offset = d.getTimezoneOffset();
@@ -86,10 +91,11 @@ export default function RecordsPage() {
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [addJobId, setAddJobId] = useState("");
-  const [addDate, setAddDate] = useState("");
+  const [addDate, setAddDate] = useState(todayInputStr());
   const [addStart, setAddStart] = useState("");
   const [addEnd, setAddEnd] = useState("");
   const [addDailyRevenue, setAddDailyRevenue] = useState("");
+  const [addNotes, setAddNotes] = useState("");
   const [addSubmitting, setAddSubmitting] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -99,6 +105,7 @@ export default function RecordsPage() {
   const [editClockOutTime, setEditClockOutTime] = useState("");
   const [editDailyRevenue, setEditDailyRevenue] = useState("");
   const [editBreakMinutes, setEditBreakMinutes] = useState("");
+  const [editNotes, setEditNotes] = useState("");
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [addTimeError, setAddTimeError] = useState("");
   const [editTimeError, setEditTimeError] = useState("");
@@ -209,6 +216,7 @@ export default function RecordsPage() {
     setAddSubmitting(true);
     const body: Record<string, unknown> = { jobId: addJobId, clockIn: inDate.toISOString(), clockOut: outDate.toISOString() };
     if (isAddCommission && addDailyRevenue) body.dailyRevenue = parseFloat(addDailyRevenue);
+    if (addNotes.trim()) body.notes = addNotes.trim();
     const res = await fetch("/api/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-device-id": deviceId },
@@ -217,10 +225,11 @@ export default function RecordsPage() {
     if (res.ok) {
       await fetchAll(deviceId);
       setShowAddForm(false);
-      setAddDate("");
+      setAddDate(todayInputStr());
       setAddStart("");
       setAddEnd("");
       setAddDailyRevenue("");
+      setAddNotes("");
     }
     setAddSubmitting(false);
   }
@@ -235,6 +244,7 @@ export default function RecordsPage() {
     setEditClockOutTime(outLocal.slice(11, 16));
     setEditDailyRevenue(s.dailyRevenue != null ? String(s.dailyRevenue) : "");
     setEditBreakMinutes(s.breakMinutes != null ? String(s.breakMinutes) : "");
+    setEditNotes(s.notes ?? "");
   }
 
   async function handleEdit(e: React.FormEvent) {
@@ -262,6 +272,7 @@ export default function RecordsPage() {
       const bm = parseInt(editBreakMinutes);
       body.breakMinutes = editBreakMinutes.trim() === "" || isNaN(bm) ? null : Math.max(0, bm);
     }
+    body.notes = editNotes.trim() === "" ? null : editNotes.trim();
     const res = await fetch(`/api/sessions/${editingId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json", "x-device-id": deviceId },
@@ -384,6 +395,19 @@ export default function RecordsPage() {
                 </div>
               </div>
             )}
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">
+                {t("common.notes")}
+                <span className="text-gray-500 ml-1">{t("common.optional")}</span>
+              </label>
+              <textarea
+                value={addNotes}
+                onChange={(e) => setAddNotes(e.target.value)}
+                placeholder={t("common.notesPlaceholder")}
+                rows={2}
+                className="block w-full max-w-full min-w-0 box-border bg-gray-700 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-500 resize-none"
+              />
+            </div>
             {addTimeError && (
               <p className="text-xs text-red-400">{addTimeError}</p>
             )}
@@ -606,6 +630,16 @@ export default function RecordsPage() {
                                         </div>
                                       </div>
                                     )}
+                                    <div>
+                                      <label className="text-xs text-gray-400 block mb-1">{t("common.notes")}</label>
+                                      <textarea
+                                        value={editNotes}
+                                        onChange={(e) => setEditNotes(e.target.value)}
+                                        placeholder={t("common.notesPlaceholder")}
+                                        rows={2}
+                                        className="block w-full max-w-full min-w-0 box-border bg-gray-600 rounded-lg px-2 py-1.5 text-xs text-white placeholder-gray-400 resize-none"
+                                      />
+                                    </div>
                                     {editTimeError && (
                                       <p className="text-xs text-red-400">{editTimeError}</p>
                                     )}
@@ -643,6 +677,9 @@ export default function RecordsPage() {
                                       )}
                                     </div>
                                   </div>
+                                  {s.notes && (
+                                    <p className="text-xs text-gray-400 mb-2 whitespace-pre-wrap break-words">{s.notes}</p>
+                                  )}
                                   <div className="flex items-center justify-between">
                                     <button
                                       onClick={() => startEdit(s)}

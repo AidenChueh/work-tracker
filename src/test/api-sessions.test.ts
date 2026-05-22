@@ -108,6 +108,29 @@ describe("PATCH /api/sessions/[id]", () => {
     );
     expect(res.status).toBe(400);
   });
+
+  it("notes 寫入 update data 並去除前後空白", async () => {
+    db.workSession.findFirst.mockResolvedValue(r(fakeSession()));
+    db.workSession.update.mockResolvedValue(r(fakeSession({ notes: "早班" })));
+    await PATCH(patchReq("d1", { notes: "  早班  " }), ctx("s1"));
+    const data = db.workSession.update.mock.calls[0][0].data as Record<string, unknown>;
+    expect(data.notes).toBe("早班");
+  });
+
+  it("notes 為空白字串時存為 null", async () => {
+    db.workSession.findFirst.mockResolvedValue(r(fakeSession({ notes: "舊備註" })));
+    db.workSession.update.mockResolvedValue(r(fakeSession()));
+    await PATCH(patchReq("d1", { notes: "   " }), ctx("s1"));
+    const data = db.workSession.update.mock.calls[0][0].data as Record<string, unknown>;
+    expect(data.notes).toBeNull();
+  });
+
+  it("notes 非字串且非 null 回傳 400", async () => {
+    db.workSession.findFirst.mockResolvedValue(r(fakeSession()));
+    const res = await PATCH(patchReq("d1", { notes: 123 }), ctx("s1"));
+    expect(res.status).toBe(400);
+    expect(db.workSession.update).not.toHaveBeenCalled();
+  });
 });
 
 describe("GET /api/sessions", () => {
@@ -151,5 +174,34 @@ describe("POST /api/sessions", () => {
       })
     );
     expect(res.status).toBe(400);
+  });
+
+  it("notes 寫入 create data 並去除前後空白", async () => {
+    db.device.upsert.mockResolvedValue(r({}));
+    db.workSession.create.mockResolvedValue(r(fakeSession({ notes: "早班" })));
+    await POST(
+      postReq("d1", {
+        jobId: "j1",
+        clockIn: "2026-05-20T09:00:00.000Z",
+        clockOut: "2026-05-20T17:00:00.000Z",
+        notes: "  早班  ",
+      })
+    );
+    const data = db.workSession.create.mock.calls[0][0].data as Record<string, unknown>;
+    expect(data.notes).toBe("早班");
+  });
+
+  it("未提供 notes 時 create data 為 null", async () => {
+    db.device.upsert.mockResolvedValue(r({}));
+    db.workSession.create.mockResolvedValue(r(fakeSession()));
+    await POST(
+      postReq("d1", {
+        jobId: "j1",
+        clockIn: "2026-05-20T09:00:00.000Z",
+        clockOut: "2026-05-20T17:00:00.000Z",
+      })
+    );
+    const data = db.workSession.create.mock.calls[0][0].data as Record<string, unknown>;
+    expect(data.notes).toBeNull();
   });
 });

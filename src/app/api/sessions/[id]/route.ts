@@ -40,6 +40,13 @@ export async function PATCH(
     }
     data.breakMinutes = bm;
   }
+  if (body.notes !== undefined) {
+    const n = body.notes;
+    if (n !== null && typeof n !== "string") {
+      return NextResponse.json({ error: "notes must be a string" }, { status: 400 });
+    }
+    data.notes = typeof n === "string" && n.trim() !== "" ? n.trim() : null;
+  }
 
   const updated = await prisma.workSession.update({
     where: { id },

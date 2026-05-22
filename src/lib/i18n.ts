@@ -17,6 +17,8 @@ const zh: Dict = {
   "common.required": "（必填）",
   "common.optional": "（選填）",
   "common.confirm": "確定",
+  "common.notes": "備註",
+  "common.notesPlaceholder": "選填，記點什麼…",
 
   // nav
   "nav.clockIn": "打卡",
@@ -198,6 +200,8 @@ const en: Dict = {
   "common.required": "(required)",
   "common.optional": "(optional)",
   "common.confirm": "OK",
+  "common.notes": "Notes",
+  "common.notesPlaceholder": "Optional note…",
 
   // nav
   "nav.clockIn": "Clock",
