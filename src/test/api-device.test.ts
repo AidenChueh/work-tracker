@@ -19,6 +19,49 @@ function fakeDevice(): Device {
   return { id: "d1", createdAt: new Date() };
 }
 
+describe("POST /api/device", () => {
+  it("400 when body has no deviceId", async () => {
+    const req = new NextRequest("http://test/api/device", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "deviceId required" });
+  });
+
+  it("400 when deviceId is not a string", async () => {
+    const req = new NextRequest("http://test/api/device", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ deviceId: 123 }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "deviceId required" });
+  });
+
+  it("200 happy path — upserts and returns device", async () => {
+    const device = fakeDevice();
+    db.device.upsert.mockResolvedValue(r(device));
+    const req = new NextRequest("http://test/api/device", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ deviceId: "d1" }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+    expect(db.device.upsert).toHaveBeenCalledWith({
+      where: { id: "d1" },
+      update: {},
+      create: { id: "d1" },
+    });
+    const body = await res.json();
+    expect(body.id).toBe("d1");
+  });
+});
+
 describe("GET /api/device", () => {
   it("400 when no deviceId param", async () => {
     const req = new NextRequest("http://test/api/device");
