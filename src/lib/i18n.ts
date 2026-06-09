@@ -32,6 +32,23 @@ const zh: Dict = {
   "onboarding.namePlaceholder": "輸入你的名字",
   "onboarding.start": "開始使用",
 
+  // login
+  "login.tabNew": "第一次使用",
+  "login.tabRestore": "已有帳號",
+  "login.deviceIdLabel": "裝置 ID",
+  "login.deviceIdPlaceholder": "貼上舊裝置的 ID",
+  "login.restoreBtn": "登入",
+  "login.restoring": "驗證中...",
+  "login.restoreError": "找不到此裝置 ID，請確認後再試",
+
+  // settings
+  "nav.settings": "設定",
+  "settings.title": "設定",
+  "settings.deviceIdLabel": "裝置 ID（換裝置時使用）",
+  "settings.copy": "複製",
+  "settings.copied": "已複製",
+  "settings.logout": "登出（清除本機資料）",
+
   // home
   "home.welcome": "歡迎，{name}",
   "home.activeWith": "打卡中 — {name}",
@@ -214,6 +231,23 @@ const en: Dict = {
   "onboarding.askName": "What's your name?",
   "onboarding.namePlaceholder": "Enter your name",
   "onboarding.start": "Get Started",
+
+  // login
+  "login.tabNew": "New Device",
+  "login.tabRestore": "Existing Account",
+  "login.deviceIdLabel": "Device ID",
+  "login.deviceIdPlaceholder": "Paste your old Device ID",
+  "login.restoreBtn": "Sign In",
+  "login.restoring": "Verifying...",
+  "login.restoreError": "Device ID not found. Please check and try again.",
+
+  // settings
+  "nav.settings": "Settings",
+  "settings.title": "Settings",
+  "settings.deviceIdLabel": "Device ID (use when switching devices)",
+  "settings.copy": "Copy",
+  "settings.copied": "Copied",
+  "settings.logout": "Sign Out (clear local data)",
 
   // home
   "home.welcome": "Welcome, {name}",
