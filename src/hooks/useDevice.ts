@@ -7,9 +7,7 @@ export function useDevice() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    let id = localStorage.getItem("deviceId");
-    if (!id) { id = crypto.randomUUID(); localStorage.setItem("deviceId", id); }
-    setDeviceId(id);
+    setDeviceId(localStorage.getItem("deviceId"));
     setUserNameState(localStorage.getItem("userName"));
     setLoaded(true);
   }, []);
