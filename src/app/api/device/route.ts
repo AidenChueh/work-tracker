@@ -16,3 +16,19 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json(device);
 }
+
+export async function GET(req: NextRequest) {
+  const deviceId = req.nextUrl.searchParams.get("deviceId");
+
+  if (!deviceId) {
+    return NextResponse.json({ error: "deviceId required" }, { status: 400 });
+  }
+
+  const device = await prisma.device.findUnique({ where: { id: deviceId } });
+
+  if (!device) {
+    return NextResponse.json({ exists: false }, { status: 404 });
+  }
+
+  return NextResponse.json({ exists: true });
+}
