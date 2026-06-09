@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { OnboardingForm } from "@/components/OnboardingForm";
 import { LocaleToggle } from "@/components/LocaleToggle";
 import { useDevice } from "@/hooks/useDevice";
 import { useLocale } from "@/hooks/useLocale";
@@ -192,14 +191,6 @@ export default function Home() {
 
   if (!loaded) return null;
 
-  if (userName === null) {
-    return (
-      <OnboardingForm
-        onComplete={(name) => setUserName(name)}
-      />
-    );
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full bg-gray-950">
@@ -246,7 +237,7 @@ export default function Home() {
             </div>
           ) : (
             <h1 className="text-xl font-semibold flex items-center gap-1.5 min-w-0">
-              <span className="truncate">{t("home.welcome", { name: userName })}</span>
+              <span className="truncate">{t("home.welcome", { name: userName ?? "" })}</span>
               <button
                 type="button"
                 onClick={startEditName}
