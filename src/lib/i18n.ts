@@ -19,6 +19,8 @@ const zh: Dict = {
   "common.confirm": "確定",
   "common.notes": "備註",
   "common.notesPlaceholder": "選填，記點什麼…",
+  "common.clockIn": "上班時間",
+  "common.clockOut": "下班時間",
 
   // nav
   "nav.clockIn": "打卡",
@@ -55,7 +57,7 @@ const zh: Dict = {
   "home.since": "自 {time}",
   "home.clockIn": "打卡上班",
   "home.clockOut": "打卡下班",
-  "home.fixedAddBtn": "新增今日打卡",
+  "home.fixedAddBtn": "打卡",
   "home.fixedAdded": "已新增 {name} 今日打卡：{start} – {end}",
   "home.addFailed": "新增失敗，請稍後再試",
   "home.selectJob": "選擇工作",
@@ -219,6 +221,8 @@ const en: Dict = {
   "common.confirm": "OK",
   "common.notes": "Notes",
   "common.notesPlaceholder": "Optional note…",
+  "common.clockIn": "Clock In",
+  "common.clockOut": "Clock Out",
 
   // nav
   "nav.clockIn": "Clock",
@@ -255,7 +259,7 @@ const en: Dict = {
   "home.since": "Since {time}",
   "home.clockIn": "Clock In",
   "home.clockOut": "Clock Out",
-  "home.fixedAddBtn": "Add Today's Shift",
+  "home.fixedAddBtn": "Clock In",
   "home.fixedAdded": "Added {name} today: {start} – {end}",
   "home.addFailed": "Failed to add. Try again.",
   "home.selectJob": "Select Job",

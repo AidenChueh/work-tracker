@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { LocaleToggle } from "@/components/LocaleToggle";
 import { useDevice } from "@/hooks/useDevice";
 import { useLocale } from "@/hooks/useLocale";
 import { calcSessionGross } from "@/lib/income";
+import { SettingsModal } from "@/components/SettingsModal";
 import type { Job, WorkSession } from "@/types/api";
 
 function formatDuration(ms: number): string {
@@ -24,6 +24,13 @@ function fmtTime(iso: string): string {
 function fmtDate(iso: string): string {
   const d = new Date(iso);
   return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function formatTodayLabel(): string {
+  const d = new Date();
+  const weekday = d.toLocaleDateString("en-US", { weekday: "long" });
+  const month = d.toLocaleDateString("en-US", { month: "short" });
+  return `${weekday}, ${month} ${d.getDate()}`;
 }
 
 function todayWithTime(time: string): Date {
@@ -51,6 +58,9 @@ export default function Home() {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [clockError, setClockError] = useState("");
+  const [showSettings, setShowSettings] = useState(false);
+  const [fixedTimeIn, setFixedTimeIn] = useState("");
+  const [fixedTimeOut, setFixedTimeOut] = useState("");
 
   const fetchJobs = useCallback(async (id: string) => {
     const res = await fetch("/api/jobs", { headers: { "x-device-id": id } });
@@ -94,6 +104,13 @@ export default function Home() {
   const selectedJob = jobs.find((j) => j.id === selectedJobId) ?? null;
   const isFixedSchedule =
     selectedJob?.scheduleType === "fixed" && !!selectedJob.fixedClockIn && !!selectedJob.fixedClockOut;
+
+  useEffect(() => {
+    if (selectedJob?.scheduleType === "fixed") {
+      setFixedTimeIn(selectedJob.fixedClockIn ?? "");
+      setFixedTimeOut(selectedJob.fixedClockOut ?? "");
+    }
+  }, [selectedJob?.id]);
 
   const handleClockIn = async () => {
     if (!selectedJobId || !deviceId || submitting) return;
@@ -143,11 +160,11 @@ export default function Home() {
   };
 
   const handleFixedClockIn = async () => {
-    if (!selectedJob || !deviceId || !selectedJob.fixedClockIn || !selectedJob.fixedClockOut) return;
+    if (!selectedJob || !deviceId || !fixedTimeIn || !fixedTimeOut) return;
     setSubmittingFixed(true);
     setFixedFeedback("");
-    const clockIn = todayWithTime(selectedJob.fixedClockIn);
-    const clockOut = todayWithTime(selectedJob.fixedClockOut);
+    const clockIn = todayWithTime(fixedTimeIn);
+    const clockOut = todayWithTime(fixedTimeOut);
     const body: Record<string, unknown> = {
       jobId: selectedJob.id,
       clockIn: clockIn.toISOString(),
@@ -165,8 +182,8 @@ export default function Home() {
       setFixedFeedback(
         t("home.fixedAdded", {
           name: selectedJob.name,
-          start: selectedJob.fixedClockIn,
-          end: selectedJob.fixedClockOut,
+          start: fixedTimeIn,
+          end: fixedTimeOut,
         })
       );
       setDailyRevenue("");
@@ -202,13 +219,12 @@ export default function Home() {
   const isCommissionJob = activeSession?.job.commissionPercentage != null;
   const fixedIsCommission = selectedJob?.commissionPercentage != null;
   const clockOutDisabled = isCommissionJob && (activeSession?.job.commissionRequired ?? false) && !dailyRevenue;
-  const fixedDisabled = submittingFixed || (fixedIsCommission && (selectedJob?.commissionRequired ?? false) && !dailyRevenue);
+  const fixedDisabled = submittingFixed || !fixedTimeIn || !fixedTimeOut || (fixedIsCommission && (selectedJob?.commissionRequired ?? false) && !dailyRevenue);
 
   return (
     <main className="bg-gray-950 text-white">
       <div className="max-w-md mx-auto px-4 py-8">
-        {/* Header: welcome + edit name + locale toggle */}
-        <div className="flex items-center justify-between gap-2 mb-6">
+        <div className="flex items-start justify-between gap-2 mb-6">
           {editingName ? (
             <div className="flex items-center gap-1.5 flex-1 min-w-0">
               <input
@@ -236,23 +252,41 @@ export default function Home() {
               </button>
             </div>
           ) : (
-            <h1 className="text-xl font-semibold flex items-center gap-1.5 min-w-0">
-              <span className="truncate">{t("home.welcome", { name: userName ?? "" })}</span>
+            <>
+              <div>
+                <h1 className="text-xl font-semibold flex items-center gap-1.5 min-w-0">
+                  <span className="truncate">{t("home.welcome", { name: userName ?? "" })}</span>
+                  <button
+                    type="button"
+                    onClick={startEditName}
+                    aria-label={t("home.editName")}
+                    title={t("home.editName")}
+                    className="shrink-0 p-1 text-gray-500 hover:text-white transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.687a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897l11.932-11.932z" />
+                    </svg>
+                  </button>
+                </h1>
+                <p className="text-sm text-gray-500 mt-0.5">{formatTodayLabel()}</p>
+              </div>
               <button
                 type="button"
-                onClick={startEditName}
-                aria-label={t("home.editName")}
-                title={t("home.editName")}
-                className="shrink-0 p-1 text-gray-500 hover:text-white transition-colors"
+                onClick={() => setShowSettings(true)}
+                className="shrink-0 p-1.5 text-gray-500 hover:text-white transition-colors"
+                aria-label="Settings"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.687a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897l11.932-11.932z" />
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
               </button>
-            </h1>
+            </>
           )}
-          {!editingName && <LocaleToggle />}
         </div>
+        {showSettings && deviceId && (
+          <SettingsModal deviceId={deviceId} onClose={() => setShowSettings(false)} />
+        )}
 
         {/* Active session timer */}
         {activeSession && (
@@ -285,11 +319,6 @@ export default function Home() {
                     </option>
                   ))}
                 </select>
-                {isFixedSchedule && selectedJob && (
-                  <p className="text-xs text-gray-500 mt-2">
-                    {t("home.fixedScheduleHint", { start: selectedJob.fixedClockIn ?? "", end: selectedJob.fixedClockOut ?? "" })}
-                  </p>
-                )}
               </>
             ) : (
               <div className="text-center py-4">
@@ -360,13 +389,35 @@ export default function Home() {
           </div>
         )}
 
-        {/* Fixed schedule add button */}
+        {/* Fixed schedule time inputs + button */}
         {!activeSession && isFixedSchedule && (
           <>
+            <div className="bg-gray-800 rounded-2xl p-4 mb-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1.5">{t("common.clockIn")}</label>
+                  <input
+                    type="time"
+                    value={fixedTimeIn}
+                    onChange={(e) => setFixedTimeIn(e.target.value)}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1.5">{t("common.clockOut")}</label>
+                  <input
+                    type="time"
+                    value={fixedTimeOut}
+                    onChange={(e) => setFixedTimeOut(e.target.value)}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
             <button
               onClick={handleFixedClockIn}
               disabled={fixedDisabled}
-              className="w-full py-5 rounded-2xl text-xl font-bold transition-all mt-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-3.5 rounded-xl text-base font-semibold tracking-wide transition-all mt-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {submittingFixed ? t("common.adding") : t("home.fixedAddBtn")}
             </button>
@@ -381,7 +432,7 @@ export default function Home() {
           <button
             onClick={activeSession ? handleClockOut : handleClockIn}
             disabled={submitting || (!activeSession && !selectedJobId) || (activeSession ? clockOutDisabled : false)}
-            className={`w-full py-5 rounded-2xl text-xl font-bold transition-all mt-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+            className={`w-full py-3.5 rounded-xl text-base font-semibold tracking-wide transition-all mt-2 disabled:opacity-50 disabled:cursor-not-allowed ${
               activeSession
                 ? "bg-red-600 hover:bg-red-700 active:bg-red-800"
                 : "bg-blue-600 hover:bg-blue-700 active:bg-blue-800"

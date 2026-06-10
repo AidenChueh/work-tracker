@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useLocale } from "@/hooks/useLocale";
-import { LocaleToggle } from "@/components/LocaleToggle";
 
 type Props = {
   onComplete: (name: string) => void;
@@ -19,11 +18,7 @@ export function OnboardingForm({ onComplete }: Props) {
   };
 
   return (
-    <div className="relative h-full bg-gray-950 text-white flex flex-col items-center justify-center px-6">
-      <div className="absolute top-4 right-4">
-        <LocaleToggle />
-      </div>
-
+    <div className="h-full bg-gray-950 text-white flex flex-col items-center justify-center px-6">
       <h1 className="text-3xl font-bold mb-2">Work Tracker</h1>
       <p className="text-gray-400 mb-10">{t("onboarding.subtitle")}</p>
 
