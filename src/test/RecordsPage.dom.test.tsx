@@ -42,12 +42,16 @@ function makeJob(overrides: Partial<Job> = {}): Job {
 }
 
 function makeSession(job: Job, overrides: Partial<WorkSession> = {}): WorkSession {
+  const clockIn = new Date();
+  clockIn.setHours(9, 0, 0, 0);
+  const clockOut = new Date(clockIn);
+  clockOut.setHours(17, 0, 0, 0);
   return {
     id: "s1",
     jobId: job.id,
     job,
-    clockIn: "2026-05-20T09:00:00.000Z",
-    clockOut: "2026-05-20T17:00:00.000Z",
+    clockIn: clockIn.toISOString(),
+    clockOut: clockOut.toISOString(),
     notes: null,
     isPublicHoliday: false,
     dailyRevenue: null,

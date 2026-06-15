@@ -22,6 +22,14 @@ function toDatetimeLocal(isoString: string): string {
   return local.toISOString().slice(0, 16);
 }
 
+function formatDuration(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
+
 function periodKeyForSession(session: WorkSession): string {
   const d = new Date(session.clockIn);
   const job = session.job;
@@ -87,7 +95,7 @@ export default function RecordsPage() {
   const [taxRate, setTaxRate] = useState(0);
 
   const [filterJobId, setFilterJobId] = useState<string>("");
-  const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>("all");
+  const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>("week");
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [addJobId, setAddJobId] = useState("");
@@ -185,7 +193,8 @@ export default function RecordsPage() {
 
   function fmtDate(iso: string): string {
     const d = new Date(iso);
-    return `${d.getMonth() + 1}/${d.getDate()}`;
+    const weekday = d.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase();
+    return `${weekday} ${d.getMonth() + 1}/${d.getDate()}`;
   }
 
   const selectedAddJob = jobs.find((j) => j.id === addJobId);
@@ -525,8 +534,6 @@ export default function RecordsPage() {
 
                           <div className="space-y-2">
                             {periodSessions.map((s) => {
-                              const gross = calcSessionGross(s);
-
                               if (editingId === s.id) {
                                 const isEditCommission = s.job.commissionPercentage != null;
                                 return (
@@ -663,19 +670,21 @@ export default function RecordsPage() {
                                 );
                               }
 
+                              const net = calcSessionIncome(s, taxRate);
+                              const duration = s.clockOut
+                                ? new Date(s.clockOut).getTime() - new Date(s.clockIn).getTime()
+                                : 0;
                               return (
                                 <div key={s.id} className="bg-gray-900 rounded-xl px-3 py-2.5">
-                                  <div className="flex items-center justify-between mb-2">
+                                  <div className="grid grid-cols-2 gap-y-1 items-center mb-2">
                                     <span className="text-sm text-white">
-                                      {fmtDate(s.clockIn)} {fmtTime(s.clockIn)} – {s.clockOut ? fmtTime(s.clockOut) : t("records.inProgress")}
+                                      {fmtTime(s.clockIn)} – {s.clockOut ? fmtTime(s.clockOut) : t("records.inProgress")}
                                     </span>
-                                    <div className="text-right">
-                                      {gross !== null ? (
-                                        <span className="text-sm font-semibold text-green-400">${gross.toFixed(2)}</span>
-                                      ) : (
-                                        <span className="text-xs text-gray-500">{t("records.commissionLabel")}</span>
-                                      )}
-                                    </div>
+                                    <span className="font-mono text-gray-300 text-sm text-right">{formatDuration(duration)}</span>
+                                    <span className="text-gray-400 text-sm">{fmtDate(s.clockIn)}</span>
+                                    <span className="text-sm font-semibold text-green-400 text-right">
+                                      {net !== null ? `$${net.toFixed(2)}` : t("records.commissionLabel")}
+                                    </span>
                                   </div>
                                   {s.notes && (
                                     <p className="text-xs text-gray-400 mb-2 whitespace-pre-wrap break-words">{s.notes}</p>

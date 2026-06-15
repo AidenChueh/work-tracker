@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { AppNav } from "@/components/AppNav";
 import { AuthGuard } from "@/components/AuthGuard";
@@ -11,6 +11,13 @@ export const metadata: Metadata = {
   description: "Track your work hours and earnings",
 };
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className="h-full">
@@ -18,9 +25,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AuthGuard>
           <div className="flex-1 min-h-0 overflow-y-auto">
             {children}
-            <p className="text-center text-[10px] text-gray-600 py-2">
-              {process.env.NEXT_PUBLIC_APP_VERSION} · {process.env.NEXT_PUBLIC_BUILD_COMMIT} · {process.env.NEXT_PUBLIC_BUILD_DATE}
-            </p>
           </div>
           <AppNav />
         </AuthGuard>

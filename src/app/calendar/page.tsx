@@ -25,13 +25,6 @@ const PERIOD_BG_FAINT: Record<PeriodKind, string> = {
 
 const WEEKDAY_KEYS = ["cal.weekday.mon", "cal.weekday.tue", "cal.weekday.wed", "cal.weekday.thu", "cal.weekday.fri", "cal.weekday.sat", "cal.weekday.sun"] as const;
 
-function formatHours(ms: number): string {
-  const totalMin = Math.round(ms / 60000);
-  const h = Math.floor(totalMin / 60);
-  const m = totalMin % 60;
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
-}
-
 function localDateStr(date: Date): string {
   return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
 }
@@ -51,6 +44,20 @@ function endOfDay(date: Date): Date {
 function fmtTime(iso: string): string {
   const d = new Date(iso);
   return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+}
+
+function fmtDateWeekday(iso: string): string {
+  const d = new Date(iso);
+  const weekday = d.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase();
+  return `${weekday} ${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function formatDuration(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
 function periodForCellWithSpan(cellDate: Date, payWeekStart: number | null | undefined, periodDays: number): { start: Date; end: Date } {
@@ -549,39 +556,24 @@ export default function CalendarPage() {
                         {groupSessions
                           .sort((a, b) => new Date(a.clockIn).getTime() - new Date(b.clockIn).getTime())
                           .map((s) => {
-                            const gross = calcSessionGross(s);
-                            const workedMs = s.clockOut
+                            const net = calcSessionIncome(s, taxRate);
+                            const duration = s.clockOut
                               ? new Date(s.clockOut).getTime() - new Date(s.clockIn).getTime()
                               : 0;
-                            const unpaidMs = s.breaks
-                              .filter((b) => !b.isPaid && b.endTime)
-                              .reduce((sum, b) => sum + (new Date(b.endTime!).getTime() - new Date(b.startTime).getTime()), 0);
-                            const effectiveMs = workedMs - unpaidMs;
 
                             return (
                               <div key={s.id} className="px-4 py-3 border-b border-gray-700/40 last:border-0">
-                                <div className="flex justify-between items-start">
-                                  <div>
-                                    <p className="text-sm font-medium">
-                                      {new Date(s.clockIn).toLocaleDateString(locale === "en" ? "en-US" : "zh-TW")}
-                                    </p>
-                                    <p className="text-xs text-gray-400 mt-0.5">
-                                      {fmtTime(s.clockIn)}
-                                      {" — "}
-                                      {s.clockOut ? fmtTime(s.clockOut) : t("cal.inProgress")}
-                                    </p>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="text-xs text-gray-400">{formatHours(effectiveMs)}</p>
-                                    {job.hourlyRate != null && (
-                                      <p className="text-xs text-gray-500">${job.hourlyRate}/hr</p>
-                                    )}
-                                    {gross !== null ? (
-                                      <p className="text-sm font-semibold text-green-400">${gross.toFixed(2)}</p>
-                                    ) : (
-                                      <p className="text-xs text-gray-500">{t("cal.commissionLabel")}</p>
-                                    )}
-                                  </div>
+                                <div className="grid grid-cols-2 gap-y-1 items-center">
+                                  <span className="text-sm text-white">
+                                    {fmtTime(s.clockIn)}
+                                    {" — "}
+                                    {s.clockOut ? fmtTime(s.clockOut) : t("cal.inProgress")}
+                                  </span>
+                                  <span className="font-mono text-gray-300 text-sm text-right">{formatDuration(duration)}</span>
+                                  <span className="text-gray-400 text-sm">{fmtDateWeekday(s.clockIn)}</span>
+                                  <span className="text-sm font-semibold text-green-400 text-right">
+                                    {net !== null ? `$${net.toFixed(2)}` : t("cal.commissionLabel")}
+                                  </span>
                                 </div>
                               </div>
                             );

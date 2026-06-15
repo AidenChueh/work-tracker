@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useDevice } from "@/hooks/useDevice";
 import { useLocale } from "@/hooks/useLocale";
-import { calcSessionGross } from "@/lib/income";
+import { calcSessionIncome } from "@/lib/income";
 import { SettingsModal } from "@/components/SettingsModal";
 import type { Job, WorkSession } from "@/types/api";
 
@@ -23,7 +23,8 @@ function fmtTime(iso: string): string {
 
 function fmtDate(iso: string): string {
   const d = new Date(iso);
-  return `${d.getMonth() + 1}/${d.getDate()}`;
+  const weekday = d.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase();
+  return `${weekday} ${d.getMonth() + 1}/${d.getDate()}`;
 }
 
 function formatTodayLabel(): string {
@@ -61,6 +62,11 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false);
   const [fixedTimeIn, setFixedTimeIn] = useState("");
   const [fixedTimeOut, setFixedTimeOut] = useState("");
+  const [taxRate, setTaxRate] = useState(0);
+
+  useEffect(() => {
+    setTaxRate(parseFloat(localStorage.getItem("taxRate") ?? "0") || 0);
+  }, []);
 
   const fetchJobs = useCallback(async (id: string) => {
     const res = await fetch("/api/jobs", { headers: { "x-device-id": id } });
@@ -455,23 +461,24 @@ export default function Home() {
                 const duration = session.clockOut
                   ? new Date(session.clockOut).getTime() - new Date(session.clockIn).getTime()
                   : 0;
-                const gross = calcSessionGross(session);
+                const net = calcSessionIncome(session, taxRate);
                 return (
-                  <div key={session.id} className="bg-gray-800 rounded-xl p-4 flex justify-between items-center gap-3">
-                    <div className="min-w-0">
-                      <p className="font-medium">{session.job.name}</p>
+                  <div key={session.id} className="bg-gray-800 rounded-xl p-4">
+                    <p className="font-medium">{session.job.name}</p>
+                    <div className="mt-2 grid grid-cols-2 gap-y-1 items-center">
                       <p className="text-gray-400 text-sm">
-                        {fmtDate(session.clockIn)} {fmtTime(session.clockIn)}
+                        {fmtTime(session.clockIn)}
                         {session.clockOut && <> — {fmtTime(session.clockOut)}</>}
                       </p>
-                      {gross !== null && (
-                        <p className="text-green-400 text-sm mt-0.5">${gross.toFixed(2)}</p>
-                      )}
-                      {session.notes && (
-                        <p className="text-gray-500 text-xs mt-0.5 truncate">{session.notes}</p>
-                      )}
+                      <p className="font-mono text-gray-300 text-sm text-right">{formatDuration(duration)}</p>
+                      <p className="text-gray-400 text-sm">{fmtDate(session.clockIn)}</p>
+                      <p className="text-green-400 text-sm text-right">
+                        {net !== null ? `$${net.toFixed(2)}` : ""}
+                      </p>
                     </div>
-                    <p className="font-mono text-gray-300 text-sm shrink-0">{formatDuration(duration)}</p>
+                    {session.notes && (
+                      <p className="text-gray-500 text-xs mt-1 truncate">{session.notes}</p>
+                    )}
                   </div>
                 );
               })}

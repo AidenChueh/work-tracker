@@ -27,7 +27,7 @@ export function SettingsModal({ deviceId, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center"
+      className="fixed inset-0 bg-black/60 z-[60] flex items-end justify-center"
       onClick={onClose}
     >
       <div
@@ -57,6 +57,10 @@ export function SettingsModal({ deviceId, onClose }: Props) {
         >
           {t("settings.logout")}
         </button>
+
+        <p className="text-center text-[10px] text-gray-600 mt-5">
+          {process.env.NEXT_PUBLIC_APP_VERSION} · {process.env.NEXT_PUBLIC_BUILD_COMMIT} · {process.env.NEXT_PUBLIC_BUILD_DATE}
+        </p>
       </div>
     </div>
   );
