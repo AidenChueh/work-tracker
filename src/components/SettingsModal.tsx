@@ -2,26 +2,44 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLocale } from "@/hooks/useLocale";
+import { clearDeviceSession } from "@/hooks/useDevice";
+import { clearCache } from "@/lib/api-cache";
+import { LocaleToggle } from "@/components/LocaleToggle";
 
 type Props = {
   deviceId: string;
   onClose: () => void;
 };
 
+type CopyState = "idle" | "copied" | "failed";
+
 export function SettingsModal({ deviceId, onClose }: Props) {
   const { t } = useLocale();
   const router = useRouter();
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<CopyState>("idle");
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(deviceId);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(deviceId);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = deviceId;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        ta.remove();
+      }
+      setCopyState("copied");
+    } catch {
+      setCopyState("failed");
+    }
+    setTimeout(() => setCopyState("idle"), 2000);
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("deviceId");
-    localStorage.removeItem("userName");
+    clearDeviceSession();
+    clearCache();
     router.replace("/login");
   };
 
@@ -45,9 +63,14 @@ export function SettingsModal({ deviceId, onClose }: Props) {
               onClick={handleCopy}
               className="shrink-0 text-xs px-3 py-1.5 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
             >
-              {copied ? t("settings.copied") : t("settings.copy")}
+              {copyState === "copied" ? t("settings.copied") : copyState === "failed" ? t("settings.copyFailed") : t("settings.copy")}
             </button>
           </div>
+        </div>
+
+        <div className="flex items-center justify-between mb-6">
+          <p className="text-sm text-gray-400">{t("settings.language")}</p>
+          <LocaleToggle />
         </div>
 
         <button

@@ -42,13 +42,15 @@ const zh: Dict = {
   "login.restoreBtn": "登入",
   "login.restoring": "驗證中...",
   "login.restoreError": "找不到此裝置 ID，請確認後再試",
+  "login.networkError": "連線失敗，請檢查網路後再試",
 
   // settings
-  "nav.settings": "設定",
   "settings.title": "設定",
   "settings.deviceIdLabel": "裝置 ID（換裝置時使用）",
   "settings.copy": "複製",
   "settings.copied": "已複製",
+  "settings.copyFailed": "複製失敗",
+  "settings.language": "語言",
   "settings.logout": "登出（清除本機資料）",
 
   // home
@@ -63,7 +65,7 @@ const zh: Dict = {
   "home.selectJob": "選擇工作",
   "home.noJobs": "還沒有工作",
   "home.goToJobs": "前往工作管理新增",
-  "home.fixedScheduleHint": "固定班表：{start} – {end}",
+  "home.revenueRequiredHint": "此工作需填寫今日業績",
   "home.publicHoliday": "國定假日",
   "home.todayRevenue": "今日業績",
   "home.recent": "最近紀錄",
@@ -244,13 +246,15 @@ const en: Dict = {
   "login.restoreBtn": "Sign In",
   "login.restoring": "Verifying...",
   "login.restoreError": "Device ID not found. Please check and try again.",
+  "login.networkError": "Connection failed. Check your network and try again.",
 
   // settings
-  "nav.settings": "Settings",
   "settings.title": "Settings",
   "settings.deviceIdLabel": "Device ID (use when switching devices)",
   "settings.copy": "Copy",
   "settings.copied": "Copied",
+  "settings.copyFailed": "Copy failed",
+  "settings.language": "Language",
   "settings.logout": "Sign Out (clear local data)",
 
   // home
@@ -265,7 +269,7 @@ const en: Dict = {
   "home.selectJob": "Select Job",
   "home.noJobs": "No jobs yet",
   "home.goToJobs": "Go to Jobs to add",
-  "home.fixedScheduleHint": "Fixed schedule: {start} – {end}",
+  "home.revenueRequiredHint": "This job requires today's revenue",
   "home.publicHoliday": "Public Holiday",
   "home.todayRevenue": "Today's Revenue",
   "home.recent": "Recent",

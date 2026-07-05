@@ -54,7 +54,7 @@ export function AppNav() {
   if (pathname === "/login") return null;
 
   return (
-    <nav className="shrink-0 bg-gray-900 border-t border-gray-800 z-50">
+    <nav className="shrink-0 bg-gray-900 border-t border-gray-800 z-50 pb-[env(safe-area-inset-bottom)]">
       <div className="max-w-md mx-auto flex">
         {NAV_ITEMS.map((item) => {
           const active = pathname === item.href;

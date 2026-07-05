@@ -51,6 +51,19 @@ function getEffectiveHourlyRate(session: SessionBase): number | null {
   return job.hourlyRate;
 }
 
+// 有效工時（毫秒）＝總時數 − 手動不帶薪休息 − 工作預設/覆寫休息；金額與顯示工時共用此計算
+export function effectiveWorkMs(session: SessionBase): number | null {
+  if (!session.clockOut) return null;
+  const job = payRules(session);
+  const totalMs = new Date(session.clockOut).getTime() - new Date(session.clockIn).getTime();
+  const manualUnpaidMs = session.breaks
+    .filter((b) => !b.isPaid && b.endTime)
+    .reduce((sum, b) => sum + (new Date(b.endTime!).getTime() - new Date(b.startTime).getTime()), 0);
+  // breakMinutes 為此筆紀錄的覆寫值，未設定時用工作預設 breakDuration
+  const jobBreakMs = (session.breakMinutes ?? job.breakDuration ?? 0) * 60000;
+  return Math.max(0, totalMs - manualUnpaidMs - jobBreakMs);
+}
+
 export function calcSessionGross(session: SessionBase): number | null {
   if (!session.clockOut) return null;
 
@@ -66,13 +79,8 @@ export function calcSessionGross(session: SessionBase): number | null {
 
   const { breakDuration, breakRate, overtimeTiers } = job;
 
-  const totalMs = new Date(session.clockOut).getTime() - new Date(session.clockIn).getTime();
-  const manualUnpaidMs = session.breaks
-    .filter((b) => !b.isPaid && b.endTime)
-    .reduce((sum, b) => sum + (new Date(b.endTime!).getTime() - new Date(b.startTime).getTime()), 0);
-  // breakMinutes 為此筆紀錄的覆寫值，未設定時用工作預設 breakDuration
   const jobBreakMs = (session.breakMinutes ?? breakDuration ?? 0) * 60000;
-  const workingHours = Math.max(0, (totalMs - manualUnpaidMs - jobBreakMs) / 3600000);
+  const workingHours = (effectiveWorkMs(session) ?? 0) / 3600000;
 
   const sorted = [...overtimeTiers].sort((a, b) => a.afterHours - b.afterHours);
   const breakpoints = [0, ...sorted.map((t) => t.afterHours)];

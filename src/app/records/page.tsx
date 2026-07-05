@@ -2,8 +2,11 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useDevice } from "@/hooks/useDevice";
+import { useTaxRate } from "@/hooks/useTaxRate";
 import { useLocale } from "@/hooks/useLocale";
-import { calcSessionIncome, calcSessionGross, payRules } from "@/lib/income";
+import { calcSessionIncome, calcSessionGross, payRules, effectiveWorkMs } from "@/lib/income";
+import { formatDuration, fmtTime, fmtDateWeekday } from "@/lib/format";
+import { getCached, hasCached, setCached } from "@/lib/api-cache";
 import type { Job, WorkSession } from "@/types/api";
 
 function localDateStr(date: Date): string {
@@ -20,14 +23,6 @@ function toDatetimeLocal(isoString: string): string {
   const offset = d.getTimezoneOffset();
   const local = new Date(d.getTime() - offset * 60000);
   return local.toISOString().slice(0, 16);
-}
-
-function formatDuration(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
 function periodKeyForSession(session: WorkSession): string {
@@ -92,7 +87,7 @@ export default function RecordsPage() {
   const [sessions, setSessions] = useState<WorkSession[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
-  const [taxRate, setTaxRate] = useState(0);
+  const taxRate = useTaxRate();
 
   const [filterJobId, setFilterJobId] = useState<string>("");
   const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>("week");
@@ -105,6 +100,7 @@ export default function RecordsPage() {
   const [addDailyRevenue, setAddDailyRevenue] = useState("");
   const [addNotes, setAddNotes] = useState("");
   const [addSubmitting, setAddSubmitting] = useState(false);
+  const [addError, setAddError] = useState("");
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editClockInDate, setEditClockInDate] = useState("");
@@ -118,29 +114,55 @@ export default function RecordsPage() {
   const [addTimeError, setAddTimeError] = useState("");
   const [editTimeError, setEditTimeError] = useState("");
 
-  useEffect(() => {
-    const stored = parseFloat(localStorage.getItem("taxRate") ?? "0");
-    setTaxRate(isNaN(stored) ? 0 : stored);
+  const fetchJobs = useCallback(async (id: string) => {
+    const res = await fetch("/api/jobs", { headers: { "x-device-id": id } });
+    if (res.ok) {
+      const jobData: Job[] = await res.json();
+      setJobs(jobData);
+      setCached(`jobs:${id}`, jobData);
+      if (jobData.length === 1) setAddJobId(jobData[0].id);
+    }
   }, []);
 
-  const fetchAll = useCallback(async (id: string) => {
-    const [sessRes, jobRes] = await Promise.all([
-      fetch("/api/sessions?limit=500", { headers: { "x-device-id": id } }),
-      fetch("/api/jobs", { headers: { "x-device-id": id } }),
-    ]);
-    if (sessRes.ok) setSessions(await sessRes.json());
-    if (jobRes.ok) {
-      const jobData: Job[] = await jobRes.json();
-      setJobs(jobData);
-      if (jobData.length === 1) setAddJobId(jobData[0].id);
+  const fetchSessions = useCallback(async (id: string, period: FilterPeriod) => {
+    let qs = "limit=500";
+    const now = new Date();
+    if (period === "week") {
+      const dow = now.getDay();
+      const start = new Date(now);
+      start.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1));
+      start.setHours(0, 0, 0, 0);
+      qs += `&since=${start.toISOString()}`;
+    } else if (period === "month") {
+      qs += `&since=${new Date(now.getFullYear(), now.getMonth(), 1).toISOString()}`;
+    }
+    const res = await fetch(`/api/sessions?${qs}`, { headers: { "x-device-id": id } });
+    if (res.ok) {
+      const data: WorkSession[] = await res.json();
+      setSessions(data);
+      setCached(`sessions:${id}:${period}`, data);
     }
   }, []);
 
   useEffect(() => {
     if (!deviceId || !loaded) return;
-    setLoading(true);
-    fetchAll(deviceId).finally(() => setLoading(false));
-  }, [deviceId, loaded, fetchAll]);
+    const cachedJobs = getCached<Job[]>(`jobs:${deviceId}`);
+    if (cachedJobs) {
+      setJobs(cachedJobs);
+      if (cachedJobs.length === 1) setAddJobId(cachedJobs[0].id);
+    }
+    fetchJobs(deviceId);
+  }, [deviceId, loaded, fetchJobs]);
+
+  useEffect(() => {
+    if (!deviceId || !loaded) return;
+    const key = `sessions:${deviceId}:${filterPeriod}`;
+    if (hasCached(key)) {
+      setSessions(getCached<WorkSession[]>(key) ?? []);
+      setLoading(false);
+    }
+    fetchSessions(deviceId, filterPeriod).finally(() => setLoading(false));
+  }, [deviceId, loaded, filterPeriod, fetchSessions]);
 
   const completedSessions = useMemo(
     () => sessions.filter((s) => s.clockOut !== null),
@@ -186,17 +208,6 @@ export default function RecordsPage() {
     return byJob;
   }, [filteredSessions]);
 
-  function fmtTime(iso: string): string {
-    const d = new Date(iso);
-    return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
-  }
-
-  function fmtDate(iso: string): string {
-    const d = new Date(iso);
-    const weekday = d.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase();
-    return `${weekday} ${d.getMonth() + 1}/${d.getDate()}`;
-  }
-
   const selectedAddJob = jobs.find((j) => j.id === addJobId);
   const isAddCommission = selectedAddJob?.commissionPercentage != null;
 
@@ -217,11 +228,14 @@ export default function RecordsPage() {
     if (!deviceId || !addJobId || !addDate || !addStart || !addEnd) return;
     const inDate = new Date(`${addDate}T${addStart}`);
     const outDate = new Date(`${addDate}T${addEnd}`);
+    // 下班早於上班視為跨夜班，落在隔天
+    if (outDate < inDate) outDate.setDate(outDate.getDate() + 1);
     if (outDate <= inDate) {
       setAddTimeError(t("records.timeError"));
       return;
     }
     setAddTimeError("");
+    setAddError("");
     setAddSubmitting(true);
     const body: Record<string, unknown> = { jobId: addJobId, clockIn: inDate.toISOString(), clockOut: outDate.toISOString() };
     if (isAddCommission && addDailyRevenue) body.dailyRevenue = parseFloat(addDailyRevenue);
@@ -232,13 +246,15 @@ export default function RecordsPage() {
       body: JSON.stringify(body),
     });
     if (res.ok) {
-      await fetchAll(deviceId);
+      await fetchSessions(deviceId, filterPeriod);
       setShowAddForm(false);
       setAddDate(todayInputStr());
       setAddStart("");
       setAddEnd("");
       setAddDailyRevenue("");
       setAddNotes("");
+    } else {
+      setAddError(t("home.addFailed"));
     }
     setAddSubmitting(false);
   }
@@ -288,7 +304,7 @@ export default function RecordsPage() {
       body: JSON.stringify(body),
     });
     if (res.ok) {
-      await fetchAll(deviceId);
+      await fetchSessions(deviceId, filterPeriod);
       setEditingId(null);
     }
     setEditSubmitting(false);
@@ -302,7 +318,11 @@ export default function RecordsPage() {
       headers: { "x-device-id": deviceId },
     });
     if (res.ok) {
-      setSessions((prev) => prev.filter((s) => s.id !== id));
+      setSessions((prev) => {
+        const next = prev.filter((s) => s.id !== id);
+        setCached(`sessions:${deviceId}:${filterPeriod}`, next);
+        return next;
+      });
     }
   }
 
@@ -417,8 +437,8 @@ export default function RecordsPage() {
                 className="block w-full max-w-full min-w-0 box-border bg-gray-700 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-500 resize-none"
               />
             </div>
-            {addTimeError && (
-              <p className="text-xs text-red-400">{addTimeError}</p>
+            {(addTimeError || addError) && (
+              <p className="text-xs text-red-400">{addTimeError || addError}</p>
             )}
             <div className="flex gap-2 pt-1">
               <button
@@ -576,11 +596,7 @@ export default function RecordsPage() {
                                           <input
                                             type="date"
                                             value={editClockOutDate}
-                                            onChange={(e) => {
-                                              const v = e.target.value;
-                                              setEditClockOutDate(v);
-                                              setEditClockInDate(v);
-                                            }}
+                                            onChange={(e) => setEditClockOutDate(e.target.value)}
                                             required
                                             className="block w-full max-w-full min-w-0 box-border bg-gray-600 rounded-lg px-1.5 py-1.5 text-xs text-white"
                                           />
@@ -671,9 +687,7 @@ export default function RecordsPage() {
                               }
 
                               const net = calcSessionIncome(s, taxRate);
-                              const duration = s.clockOut
-                                ? new Date(s.clockOut).getTime() - new Date(s.clockIn).getTime()
-                                : 0;
+                              const duration = effectiveWorkMs(s) ?? 0;
                               return (
                                 <div key={s.id} className="bg-gray-900 rounded-xl px-3 py-2.5">
                                   <div className="grid grid-cols-2 gap-y-1 items-center mb-2">
@@ -681,7 +695,7 @@ export default function RecordsPage() {
                                       {fmtTime(s.clockIn)} – {s.clockOut ? fmtTime(s.clockOut) : t("records.inProgress")}
                                     </span>
                                     <span className="font-mono text-gray-300 text-sm text-right">{formatDuration(duration)}</span>
-                                    <span className="text-gray-400 text-sm">{fmtDate(s.clockIn)}</span>
+                                    <span className="text-gray-400 text-sm">{fmtDateWeekday(s.clockIn)}</span>
                                     <span className="text-sm font-semibold text-green-400 text-right">
                                       {net !== null ? `$${net.toFixed(2)}` : t("records.commissionLabel")}
                                     </span>

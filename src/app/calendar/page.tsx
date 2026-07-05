@@ -2,8 +2,11 @@
 
 import { useState, useEffect, useCallback, useMemo, type Dispatch, type SetStateAction } from "react";
 import { useDevice } from "@/hooks/useDevice";
+import { useTaxRate } from "@/hooks/useTaxRate";
 import { useLocale } from "@/hooks/useLocale";
-import { calcSessionIncome, calcSessionGross } from "@/lib/income";
+import { calcSessionIncome, calcSessionGross, effectiveWorkMs } from "@/lib/income";
+import { formatDuration, fmtTime, fmtDateWeekday } from "@/lib/format";
+import { getCached, hasCached, setCached } from "@/lib/api-cache";
 import type { Job, WorkSession } from "@/types/api";
 
 type PeriodKind = "weekly" | "biweekly" | "monthly";
@@ -39,25 +42,6 @@ function endOfDay(date: Date): Date {
   const d = new Date(date);
   d.setHours(23, 59, 59, 999);
   return d;
-}
-
-function fmtTime(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
-}
-
-function fmtDateWeekday(iso: string): string {
-  const d = new Date(iso);
-  const weekday = d.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase();
-  return `${weekday} ${d.getMonth() + 1}/${d.getDate()}`;
-}
-
-function formatDuration(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
 function periodForCellWithSpan(cellDate: Date, payWeekStart: number | null | undefined, periodDays: number): { start: Date; end: Date } {
@@ -143,16 +127,15 @@ export default function CalendarPage() {
   const [viewMonth, setViewMonth] = useState(() => new Date().getMonth());
   const [loading, setLoading] = useState(true);
   const [selection, setSelection] = useState<SelectionMode | null>(null);
-  const [taxRate, setTaxRate] = useState(0);
-
-  useEffect(() => {
-    const stored = parseFloat(localStorage.getItem("taxRate") ?? "0");
-    setTaxRate(isNaN(stored) ? 0 : stored);
-  }, []);
+  const taxRate = useTaxRate();
 
   const fetchJobs = useCallback(async (id: string) => {
     const res = await fetch("/api/jobs", { headers: { "x-device-id": id } });
-    if (res.ok) setJobs(await res.json());
+    if (res.ok) {
+      const data: Job[] = await res.json();
+      setJobs(data);
+      setCached(`jobs:${id}`, data);
+    }
   }, []);
 
   const fetchSessions = useCallback(async (id: string, year: number, month: number) => {
@@ -165,14 +148,23 @@ export default function CalendarPage() {
     );
     if (res.ok) {
       const data: WorkSession[] = await res.json();
-      setSessions(data.filter((s) => s.clockOut !== null));
+      const completed = data.filter((s) => s.clockOut !== null);
+      setSessions(completed);
+      setCached(`cal:${id}:${year}-${month}`, completed);
     }
   }, []);
 
   useEffect(() => {
     if (!deviceId || !loaded) return;
-    setLoading(true);
     setSelection(null);
+    const key = `cal:${deviceId}:${viewYear}-${viewMonth}`;
+    if (hasCached(key) && hasCached(`jobs:${deviceId}`)) {
+      setSessions(getCached<WorkSession[]>(key) ?? []);
+      setJobs(getCached<Job[]>(`jobs:${deviceId}`) ?? []);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     Promise.all([
       fetchJobs(deviceId),
       fetchSessions(deviceId, viewYear, viewMonth),
@@ -557,9 +549,7 @@ export default function CalendarPage() {
                           .sort((a, b) => new Date(a.clockIn).getTime() - new Date(b.clockIn).getTime())
                           .map((s) => {
                             const net = calcSessionIncome(s, taxRate);
-                            const duration = s.clockOut
-                              ? new Date(s.clockOut).getTime() - new Date(s.clockIn).getTime()
-                              : 0;
+                            const duration = effectiveWorkMs(s) ?? 0;
 
                             return (
                               <div key={s.id} className="px-4 py-3 border-b border-gray-700/40 last:border-0">
@@ -598,14 +588,7 @@ export default function CalendarPage() {
                     else label = t("cal.weeklyTotal");
                   }
                   const totalHoursMs = isPeriod
-                    ? detailData.sessions.reduce((sum, s) => {
-                        if (!s.clockOut) return sum;
-                        const workedMs = new Date(s.clockOut).getTime() - new Date(s.clockIn).getTime();
-                        const unpaidMs = s.breaks
-                          .filter((b) => !b.isPaid && b.endTime)
-                          .reduce((u, b) => u + (new Date(b.endTime!).getTime() - new Date(b.startTime).getTime()), 0);
-                        return sum + (workedMs - unpaidMs);
-                      }, 0)
+                    ? detailData.sessions.reduce((sum, s) => sum + (effectiveWorkMs(s) ?? 0), 0)
                     : 0;
                   const totalHoursNum = totalHoursMs / 3600000;
                   const hoursStr =

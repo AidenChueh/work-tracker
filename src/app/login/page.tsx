@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLocale } from "@/hooks/useLocale";
+import { saveDeviceSession } from "@/hooks/useDevice";
 
 type Tab = "new" | "restore";
 
@@ -11,6 +12,8 @@ export default function LoginPage() {
   const [tab, setTab] = useState<Tab>("new");
 
   const [name, setName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
 
   const [restoreDeviceId, setRestoreDeviceId] = useState("");
   const [restoreName, setRestoreName] = useState("");
@@ -20,34 +23,49 @@ export default function LoginPage() {
   const handleNewUser = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = name.trim();
-    if (!trimmed) return;
+    if (!trimmed || creating) return;
+    setCreating(true);
+    setCreateError("");
     const deviceId = crypto.randomUUID();
-    await fetch("/api/device", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ deviceId }),
-    });
-    localStorage.setItem("deviceId", deviceId);
-    localStorage.setItem("userName", trimmed);
-    router.replace("/");
+    try {
+      const res = await fetch("/api/device", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deviceId }),
+      });
+      if (!res.ok) {
+        setCreateError(t("login.networkError"));
+        return;
+      }
+      saveDeviceSession(deviceId, trimmed);
+      router.replace("/");
+    } catch {
+      setCreateError(t("login.networkError"));
+    } finally {
+      setCreating(false);
+    }
   };
 
   const handleRestore = async (e: React.FormEvent) => {
     e.preventDefault();
     const id = restoreDeviceId.trim();
     const nm = restoreName.trim();
-    if (!id || !nm) return;
+    if (!id || !nm || restoring) return;
     setRestoring(true);
     setRestoreError("");
-    const res = await fetch(`/api/device?deviceId=${encodeURIComponent(id)}`);
-    if (!res.ok) {
-      setRestoreError(t("login.restoreError"));
+    try {
+      const res = await fetch(`/api/device?deviceId=${encodeURIComponent(id)}`);
+      if (!res.ok) {
+        setRestoreError(t("login.restoreError"));
+        return;
+      }
+      saveDeviceSession(id, nm);
+      router.replace("/");
+    } catch {
+      setRestoreError(t("login.networkError"));
+    } finally {
       setRestoring(false);
-      return;
     }
-    localStorage.setItem("deviceId", id);
-    localStorage.setItem("userName", nm);
-    router.replace("/");
   };
 
   return (
@@ -89,12 +107,15 @@ export default function LoginPage() {
               className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-4 text-white text-lg placeholder-gray-500 focus:outline-none focus:border-blue-500"
             />
           </div>
+          {createError && (
+            <p className="text-red-400 text-sm">{createError}</p>
+          )}
           <button
             type="submit"
-            disabled={!name.trim()}
+            disabled={!name.trim() || creating}
             className="w-full py-4 rounded-xl bg-blue-600 text-white text-lg font-semibold hover:bg-blue-700 disabled:opacity-40 transition-colors"
           >
-            {t("onboarding.start")}
+            {creating ? t("common.loading") : t("onboarding.start")}
           </button>
         </form>
       ) : (

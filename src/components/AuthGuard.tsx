@@ -1,6 +1,7 @@
 "use client";
 import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { getStoredDeviceId } from "@/hooks/useDevice";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -8,7 +9,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (pathname === "/login") return;
-    if (!localStorage.getItem("deviceId")) {
+    if (!getStoredDeviceId()) {
       router.replace("/login");
     }
   }, [pathname, router]);

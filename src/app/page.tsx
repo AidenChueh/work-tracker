@@ -3,36 +3,13 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useDevice } from "@/hooks/useDevice";
+import { useTaxRate } from "@/hooks/useTaxRate";
 import { useLocale } from "@/hooks/useLocale";
-import { calcSessionIncome } from "@/lib/income";
+import { calcSessionIncome, effectiveWorkMs } from "@/lib/income";
+import { formatDuration, fmtTime, fmtDateWeekday, formatTodayLabel } from "@/lib/format";
+import { getCached, hasCached, setCached } from "@/lib/api-cache";
 import { SettingsModal } from "@/components/SettingsModal";
 import type { Job, WorkSession } from "@/types/api";
-
-function formatDuration(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-}
-
-function fmtTime(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
-}
-
-function fmtDate(iso: string): string {
-  const d = new Date(iso);
-  const weekday = d.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase();
-  return `${weekday} ${d.getMonth() + 1}/${d.getDate()}`;
-}
-
-function formatTodayLabel(): string {
-  const d = new Date();
-  const weekday = d.toLocaleDateString("en-US", { weekday: "long" });
-  const month = d.toLocaleDateString("en-US", { month: "short" });
-  return `${weekday}, ${month} ${d.getDate()}`;
-}
 
 function todayWithTime(time: string): Date {
   const [h, m] = time.split(":").map((s) => parseInt(s, 10));
@@ -62,42 +39,54 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false);
   const [fixedTimeIn, setFixedTimeIn] = useState("");
   const [fixedTimeOut, setFixedTimeOut] = useState("");
-  const [taxRate, setTaxRate] = useState(0);
-
-  useEffect(() => {
-    setTaxRate(parseFloat(localStorage.getItem("taxRate") ?? "0") || 0);
-  }, []);
+  const taxRate = useTaxRate();
 
   const fetchJobs = useCallback(async (id: string) => {
     const res = await fetch("/api/jobs", { headers: { "x-device-id": id } });
     if (res.ok) {
       const data: Job[] = await res.json();
       setJobs(data);
+      setCached(`jobs:${id}`, data);
       if (data.length > 0) setSelectedJobId((prev) => prev || data[0].id);
     }
   }, []);
 
   const fetchActiveSession = useCallback(async (id: string) => {
     const res = await fetch("/api/sessions/active", { headers: { "x-device-id": id } });
-    if (res.ok) setActiveSession(await res.json());
+    if (res.ok) {
+      const data: WorkSession | null = await res.json();
+      setActiveSession(data);
+      setCached(`active:${id}`, data);
+    }
   }, []);
 
   const fetchRecentSessions = useCallback(async (id: string) => {
     const res = await fetch("/api/sessions", { headers: { "x-device-id": id } });
     if (res.ok) {
       const data: WorkSession[] = await res.json();
-      setRecentSessions(data.filter((s) => s.clockOut !== null).slice(0, 3));
+      const recent = data.filter((s) => s.clockOut !== null).slice(0, 3);
+      setRecentSessions(recent);
+      setCached(`recent:${id}`, recent);
     }
   }, []);
 
   useEffect(() => {
-    if (!deviceId || !loaded || userName === null) return;
+    if (!deviceId || !loaded) return;
+    // 有快取先渲染，fetch 在背景 revalidate；spinner 只在第一次出現
+    if (hasCached(`jobs:${deviceId}`)) {
+      const cachedJobs = getCached<Job[]>(`jobs:${deviceId}`) ?? [];
+      setJobs(cachedJobs);
+      if (cachedJobs.length > 0) setSelectedJobId((prev) => prev || cachedJobs[0].id);
+      setActiveSession(getCached<WorkSession | null>(`active:${deviceId}`) ?? null);
+      setRecentSessions(getCached<WorkSession[]>(`recent:${deviceId}`) ?? []);
+      setLoading(false);
+    }
     Promise.all([
       fetchJobs(deviceId),
       fetchActiveSession(deviceId),
       fetchRecentSessions(deviceId),
     ]).finally(() => setLoading(false));
-  }, [deviceId, loaded, userName, fetchJobs, fetchActiveSession, fetchRecentSessions]);
+  }, [deviceId, loaded, fetchJobs, fetchActiveSession, fetchRecentSessions]);
 
   useEffect(() => {
     if (!activeSession) return;
@@ -128,7 +117,9 @@ export default function Home() {
       body: JSON.stringify({ jobId: selectedJobId }),
     });
     if (res.ok) {
-      setActiveSession(await res.json());
+      const data: WorkSession = await res.json();
+      setActiveSession(data);
+      setCached(`active:${deviceId}`, data);
       setElapsed(0);
     } else {
       const data = await res.json().catch(() => ({}));
@@ -153,6 +144,7 @@ export default function Home() {
     });
     if (res.ok) {
       setActiveSession(null);
+      setCached(`active:${deviceId}`, null);
       setElapsed(0);
       setDailyRevenue("");
       setNotes("");
@@ -171,6 +163,8 @@ export default function Home() {
     setFixedFeedback("");
     const clockIn = todayWithTime(fixedTimeIn);
     const clockOut = todayWithTime(fixedTimeOut);
+    // 下班時間早於上班視為跨夜班，落在隔天
+    if (clockOut <= clockIn) clockOut.setDate(clockOut.getDate() + 1);
     const body: Record<string, unknown> = {
       jobId: selectedJob.id,
       clockIn: clockIn.toISOString(),
@@ -451,6 +445,10 @@ export default function Home() {
         {clockError && (
           <p className="text-xs text-center text-red-400 mt-2">{clockError}</p>
         )}
+        {!submitting && !submittingFixed && !clockError &&
+          ((activeSession ? clockOutDisabled : isFixedSchedule && fixedIsCommission && (selectedJob?.commissionRequired ?? false) && !dailyRevenue)) && (
+          <p className="text-xs text-center text-gray-500 mt-2">{t("home.revenueRequiredHint")}</p>
+        )}
 
         {/* Recent sessions */}
         {recentSessions.length > 0 && !activeSession && (
@@ -458,9 +456,7 @@ export default function Home() {
             <h2 className="text-gray-400 text-xs uppercase tracking-wide mb-3">{t("home.recent")}</h2>
             <div className="space-y-1">
               {recentSessions.map((session) => {
-                const duration = session.clockOut
-                  ? new Date(session.clockOut).getTime() - new Date(session.clockIn).getTime()
-                  : 0;
+                const duration = effectiveWorkMs(session) ?? 0;
                 const net = calcSessionIncome(session, taxRate);
                 return (
                   <div key={session.id} className="bg-gray-800 rounded-xl p-4">
@@ -471,7 +467,7 @@ export default function Home() {
                         {session.clockOut && <> — {fmtTime(session.clockOut)}</>}
                       </p>
                       <p className="font-mono text-gray-300 text-sm text-right">{formatDuration(duration)}</p>
-                      <p className="text-gray-400 text-sm">{fmtDate(session.clockIn)}</p>
+                      <p className="text-gray-400 text-sm">{fmtDateWeekday(session.clockIn)}</p>
                       <p className="text-green-400 text-sm text-right">
                         {net !== null ? `$${net.toFixed(2)}` : ""}
                       </p>

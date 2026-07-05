@@ -5,6 +5,7 @@ import { AddJobForm } from "@/components/AddJobForm";
 import { EditJobForm } from "@/components/EditJobForm";
 import { useDevice } from "@/hooks/useDevice";
 import { useLocale } from "@/hooks/useLocale";
+import { getCached, setCached } from "@/lib/api-cache";
 
 type Job = {
   id: string;
@@ -48,11 +49,20 @@ export default function JobsPage() {
 
   const fetchJobs = useCallback(async (id: string) => {
     const res = await fetch("/api/jobs", { headers: { "x-device-id": id } });
-    if (res.ok) setJobs(await res.json());
+    if (res.ok) {
+      const data: Job[] = await res.json();
+      setJobs(data);
+      setCached(`jobs:${id}`, data);
+    }
   }, []);
 
   useEffect(() => {
     if (!deviceId || !loaded) return;
+    const cached = getCached<Job[]>(`jobs:${deviceId}`);
+    if (cached) {
+      setJobs(cached);
+      setLoading(false);
+    }
     fetchJobs(deviceId).finally(() => setLoading(false));
   }, [deviceId, loaded, fetchJobs]);
 
