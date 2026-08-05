@@ -13,6 +13,16 @@ export function formatDuration(ms: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
+export function formatHoursMinutes(ms: number): string {
+  const total = Math.round(ms / 60000);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  const en = getLocale() === "en";
+  if (h === 0) return en ? `${m} min` : `${m} 分`;
+  if (m === 0) return en ? `${h} hr` : `${h} 小時`;
+  return en ? `${h} hr ${m} min` : `${h} 小時 ${m} 分`;
+}
+
 export function fmtTime(iso: string): string {
   const d = new Date(iso);
   return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;

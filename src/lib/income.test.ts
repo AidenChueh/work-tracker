@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calcSessionGross, calcSessionIncome, type JobBase, type SessionBase } from "./income";
+import { calcSessionGross, calcSessionIncome, effectiveWorkMs, type JobBase, type SessionBase } from "./income";
 
 function makeJob(overrides: Partial<JobBase> = {}): JobBase {
   return {
@@ -38,6 +38,36 @@ function makeSession(overrides: Partial<SessionBase> = {}): SessionBase {
     ...overrides,
   };
 }
+
+describe("effectiveWorkMs — 平均工時的計算基礎", () => {
+  const HOUR = 3600000;
+
+  it("9:00–17:00 = 8 小時", () => {
+    expect(effectiveWorkMs(makeSession())).toBe(8 * HOUR);
+  });
+
+  it("跨夜班 22:00 到隔日 02:00 = 4 小時", () => {
+    const clockIn = new Date(2026, 5, 3, 22, 0, 0, 0);
+    const clockOut = new Date(2026, 5, 4, 2, 0, 0, 0);
+    expect(
+      effectiveWorkMs(makeSession({ clockIn: clockIn.toISOString(), clockOut: clockOut.toISOString() }))
+    ).toBe(4 * HOUR);
+  });
+
+  it("扣除工作預設休息 30 分後為 7.5 小時", () => {
+    expect(effectiveWorkMs(makeSession({ job: makeJob({ breakDuration: 30 }) }))).toBe(7.5 * HOUR);
+  });
+
+  it("breakMinutes 覆寫工作預設休息", () => {
+    expect(
+      effectiveWorkMs(makeSession({ job: makeJob({ breakDuration: 30 }), breakMinutes: 60 }))
+    ).toBe(7 * HOUR);
+  });
+
+  it("未下班回傳 null（不納入平均工時）", () => {
+    expect(effectiveWorkMs(makeSession({ clockOut: null }))).toBeNull();
+  });
+});
 
 describe("calcSessionGross — 基本時薪", () => {
   it("8 小時 × $20 = $160", () => {

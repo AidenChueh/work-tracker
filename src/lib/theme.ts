@@ -13,6 +13,10 @@ export const SURFACE = {
   today: "bg-blue-500/10 ring-1 ring-inset ring-blue-500/40",
   selected: "bg-gray-800 ring-1 ring-blue-500",
   hover: "hover:bg-gray-800/70",
+  segment: "bg-gray-800",
+  segmentOn: "bg-gray-700 text-white",
+  segmentOff: "text-gray-500 hover:text-gray-300",
+  divider: "border-t border-gray-800",
 } as const;
 
 export const TYPE = {
@@ -20,6 +24,9 @@ export const TYPE = {
   cardLabel: "text-[11px] font-medium text-gray-400",
   cardValue: "text-[26px] font-bold leading-none tabular-nums",
   cardMeta: "text-[11px] leading-tight text-gray-400 tabular-nums",
+  statLabel: "text-[11px] leading-none text-gray-500",
+  statValue: "text-[13px] font-semibold leading-none text-gray-100 tabular-nums",
+  segment: "text-[11px] font-semibold leading-none",
   weekday: "text-[11px] font-semibold tracking-wide",
   dayNum: "text-[13px] font-semibold leading-none tabular-nums",
   dayIncome: "text-[10px] font-semibold leading-none tabular-nums",

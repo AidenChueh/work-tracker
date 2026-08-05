@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback, useMemo, type Dispatch, type SetState
 import { useDevice } from "@/hooks/useDevice";
 import { useTaxRate } from "@/hooks/useTaxRate";
 import { useLocale } from "@/hooks/useLocale";
+import { useIncomeMode, type IncomeMode } from "@/hooks/useIncomeMode";
 import { calcSessionIncome, calcSessionGross, effectiveWorkMs } from "@/lib/income";
-import { formatDuration, fmtTime, fmtDateWeekday } from "@/lib/format";
+import { formatDuration, formatHoursMinutes, fmtTime, fmtDateWeekday } from "@/lib/format";
 import { getCached, hasCached, setCached } from "@/lib/api-cache";
 import { INCOME, PERIOD, RADIUS, SURFACE, TYPE, money, type PeriodKind } from "@/lib/theme";
 import type { Job, WorkSession } from "@/types/api";
@@ -119,6 +120,12 @@ export default function CalendarPage() {
   const [loading, setLoading] = useState(true);
   const [selection, setSelection] = useState<SelectionMode | null>(null);
   const taxRate = useTaxRate();
+  const [incomeMode, setIncomeMode] = useIncomeMode();
+
+  const amountOf = useCallback(
+    (s: WorkSession) => (incomeMode === "net" ? calcSessionIncome(s, taxRate) : calcSessionGross(s)),
+    [incomeMode, taxRate]
+  );
 
   const fetchJobs = useCallback(async (id: string) => {
     const res = await fetch("/api/jobs", { headers: { "x-device-id": id } });
@@ -195,15 +202,28 @@ export default function CalendarPage() {
 
   const monthStats = useMemo(() => {
     const days = new Set<string>();
+    const workedDays = new Set<string>();
     let income = 0;
+    let workMs = 0;
     for (const s of sessions) {
       const d = new Date(s.clockIn);
       if (d.getFullYear() !== viewYear || d.getMonth() !== viewMonth) continue;
-      days.add(localDateStr(d));
-      income += calcSessionIncome(s, taxRate) ?? 0;
+      const key = localDateStr(d);
+      days.add(key);
+      income += amountOf(s) ?? 0;
+      const ms = effectiveWorkMs(s);
+      if (ms !== null) {
+        workMs += ms;
+        workedDays.add(key);
+      }
     }
-    return { income, dayCount: days.size, avg: days.size > 0 ? income / days.size : 0 };
-  }, [sessions, viewYear, viewMonth, taxRate]);
+    return {
+      income,
+      dayCount: days.size,
+      avgIncome: days.size > 0 ? income / days.size : 0,
+      avgWorkMs: workedDays.size > 0 ? workMs / workedDays.size : null,
+    };
+  }, [sessions, viewYear, viewMonth, amountOf]);
 
   const weeklyJobs = useMemo(
     () => jobs.filter((j) => j.payFrequency === "weekly" && j.payDay != null),
@@ -259,7 +279,7 @@ export default function CalendarPage() {
           const t = new Date(s.clockIn).getTime();
           return s.jobId === job.id && t >= start.getTime() && t <= end.getTime();
         })
-        .reduce((s2, s) => s2 + (calcSessionIncome(s, taxRate) ?? 0), 0);
+        .reduce((s2, s) => s2 + (amountOf(s) ?? 0), 0);
       return sum + jobTotal;
     }, 0);
 
@@ -276,7 +296,7 @@ export default function CalendarPage() {
           const t = new Date(s.clockIn).getTime();
           return s.jobId === job.id && t >= start.getTime() && t <= end.getTime();
         })
-        .reduce((s2, s) => s2 + (calcSessionIncome(s, taxRate) ?? 0), 0);
+        .reduce((s2, s) => s2 + (amountOf(s) ?? 0), 0);
       return sum + jobTotal;
     }, 0);
     return total > 0 ? { total, jobCount: matching.length } : null;
@@ -293,7 +313,7 @@ export default function CalendarPage() {
         const t = new Date(s.clockIn).getTime();
         return t >= prevMonthStart.getTime() && t <= prevMonthEnd.getTime();
       })
-      .reduce((sum, s) => sum + (calcSessionIncome(s, taxRate) ?? 0), 0);
+      .reduce((sum, s) => sum + (amountOf(s) ?? 0), 0);
     return total > 0 ? { total, jobCount: matching.length } : null;
   }
 
@@ -362,20 +382,42 @@ export default function CalendarPage() {
         </div>
 
         {/* Month summary */}
-        <div className={`${SURFACE.card} ${RADIUS.card} px-4 py-4 mb-4 flex items-end justify-between gap-4`}>
-          <div className="min-w-0">
-            <div className={`${TYPE.cardLabel} mb-2`}>{t("cal.summary.title")}</div>
-            <div className={`${TYPE.cardValue} ${INCOME.text}`}>{money(monthStats.income)}</div>
+        <div className={`${SURFACE.card} ${RADIUS.card} px-4 py-3.5 mb-4`}>
+          <div className="flex items-center justify-between gap-3">
+            <span className={TYPE.cardLabel}>{t("cal.summary.title")}</span>
+            <div className={`flex items-center gap-0.5 p-0.5 ${RADIUS.chip} ${SURFACE.segment}`}>
+              {(["net", "gross"] as IncomeMode[]).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setIncomeMode(m)}
+                  className={`px-2 py-1 ${RADIUS.pill} ${TYPE.segment} transition-colors ${incomeMode === m ? SURFACE.segmentOn : SURFACE.segmentOff}`}
+                >
+                  {t(`cal.mode.${m}`)}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="shrink-0 text-right space-y-1">
-            {monthStats.dayCount > 0 ? (
-              <>
-                <div className={TYPE.cardMeta}>{t("cal.summary.days", { days: monthStats.dayCount })}</div>
-                <div className={TYPE.cardMeta}>{t("cal.summary.avg", { amount: money(monthStats.avg) })}</div>
-              </>
-            ) : (
-              <div className={TYPE.cardMeta}>{t("cal.summary.noData")}</div>
+
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className={`${TYPE.cardValue} ${INCOME.text}`}>{money(monthStats.income)}</span>
+            {monthStats.dayCount > 0 && (
+              <span className={TYPE.cardMeta}>{t("cal.summary.avgIncome", { amount: money(monthStats.avgIncome) })}</span>
             )}
+          </div>
+
+          <div className={`mt-3 pt-3 grid grid-cols-2 gap-3 ${SURFACE.divider}`}>
+            <div>
+              <div className={TYPE.statLabel}>{t("cal.summary.days")}</div>
+              <div className={`mt-1.5 ${TYPE.statValue}`}>
+                {monthStats.dayCount > 0 ? t("cal.summary.daysValue", { days: monthStats.dayCount }) : "—"}
+              </div>
+            </div>
+            <div>
+              <div className={TYPE.statLabel}>{t("cal.summary.avgHours")}</div>
+              <div className={`mt-1.5 ${TYPE.statValue}`}>
+                {monthStats.avgWorkMs !== null ? formatHoursMinutes(monthStats.avgWorkMs) : "—"}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -423,7 +465,7 @@ export default function CalendarPage() {
             const isCurrentMonth = day.getMonth() === viewMonth;
             const isToday = dateStr === todayStr;
             const daySessions = sessionsByDay.get(dateStr) ?? [];
-            const dayIncome = daySessions.reduce((sum, s) => sum + (calcSessionIncome(s, taxRate) ?? 0), 0);
+            const dayIncome = daySessions.reduce((sum, s) => sum + (amountOf(s) ?? 0), 0);
             const hasIncome = daySessions.some((s) => calcSessionGross(s) !== null);
             const weeklyBadge = getWeeklyBadge(day);
             const biweeklyBadge = getBiweeklyBadge(day);
@@ -567,7 +609,7 @@ export default function CalendarPage() {
 
                   return groups.map((groupSessions) => {
                     const job = groupSessions[0].job;
-                    const groupGross = groupSessions.reduce((sum, s) => sum + (calcSessionGross(s) ?? 0), 0);
+                    const groupTotal = groupSessions.reduce((sum, s) => sum + (amountOf(s) ?? 0), 0);
                     const groupHasIncome = groupSessions.some((s) => calcSessionGross(s) !== null);
                     const isPeriodView = selection.type === "period";
 
@@ -577,14 +619,14 @@ export default function CalendarPage() {
                           <div className="flex justify-between items-center px-4 py-2 bg-gray-750 border-b border-gray-700/50">
                             <span className="text-xs font-medium text-gray-300">{job.name}</span>
                             {isPeriodView && groupHasIncome && (
-                              <span className="text-xs text-green-400">{t("cal.subtotal", { amount: groupGross.toFixed(2) })}</span>
+                              <span className="text-xs text-green-400">{t("cal.subtotal", { amount: groupTotal.toFixed(2) })}</span>
                             )}
                           </div>
                         )}
                         {groupSessions
                           .sort((a, b) => new Date(a.clockIn).getTime() - new Date(b.clockIn).getTime())
                           .map((s) => {
-                            const net = calcSessionIncome(s, taxRate);
+                            const amount = amountOf(s);
                             const duration = effectiveWorkMs(s) ?? 0;
 
                             return (
@@ -598,7 +640,7 @@ export default function CalendarPage() {
                                   <span className="font-mono text-gray-300 text-sm text-right">{formatDuration(duration)}</span>
                                   <span className="text-gray-400 text-sm">{fmtDateWeekday(s.clockIn)}</span>
                                   <span className="text-sm font-semibold text-green-400 text-right">
-                                    {net !== null ? `$${net.toFixed(2)}` : t("cal.commissionLabel")}
+                                    {amount !== null ? `$${amount.toFixed(2)}` : t("cal.commissionLabel")}
                                   </span>
                                 </div>
                               </div>
@@ -613,9 +655,8 @@ export default function CalendarPage() {
                 {(() => {
                   const hasIncome = detailData.sessions.some((s) => calcSessionGross(s) !== null);
                   if (!hasIncome) return null;
-                  const gross = detailData.sessions.reduce((sum, s) => sum + (calcSessionGross(s) ?? 0), 0);
                   const isPeriod = selection.type === "period";
-                  const net = detailData.sessions.reduce((sum, s) => sum + (calcSessionIncome(s, taxRate) ?? 0), 0);
+                  const total = detailData.sessions.reduce((sum, s) => sum + (amountOf(s) ?? 0), 0);
                   let label = t("cal.dayTotal");
                   if (isPeriod) {
                     const freqs = new Set(detailData.sessions.map((s) => jobs.find((j) => j.id === s.jobId)?.payFrequency));
@@ -623,30 +664,21 @@ export default function CalendarPage() {
                     else if (freqs.has("bi_weekly")) label = t("cal.biweeklyTotal");
                     else label = t("cal.weeklyTotal");
                   }
-                  const totalHoursMs = isPeriod
-                    ? detailData.sessions.reduce((sum, s) => sum + (effectiveWorkMs(s) ?? 0), 0)
-                    : 0;
-                  const totalHoursNum = totalHoursMs / 3600000;
-                  const hoursStr =
-                    totalHoursNum === Math.floor(totalHoursNum)
-                      ? String(totalHoursNum)
-                      : (Math.round(totalHoursNum * 10) / 10).toString();
+                  const totalHoursMs = detailData.sessions.reduce((sum, s) => sum + (effectiveWorkMs(s) ?? 0), 0);
                   return (
                     <div className="px-4 py-3 border-t border-gray-700 bg-gray-900/40">
-                      {isPeriod ? (
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-gray-400">{label}</span>
-                          <div className="text-right">
-                            <div className="text-xs text-gray-400">{t("cal.hoursTotal", { hours: hoursStr })}</div>
-                            <div className="text-base font-bold text-green-400">${net.toFixed(2)}</div>
-                          </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-400">
+                          {label}
+                          <span className="ml-1.5 text-xs text-gray-500">{t(`cal.mode.${incomeMode}`)}</span>
+                        </span>
+                        <div className="text-right">
+                          {isPeriod && (
+                            <div className="text-xs text-gray-400">{t("cal.hoursTotal", { hours: formatHoursMinutes(totalHoursMs) })}</div>
+                          )}
+                          <div className="text-base font-bold text-green-400">${total.toFixed(2)}</div>
                         </div>
-                      ) : (
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-gray-400">{label}</span>
-                          <span className="text-base font-bold text-green-400">${gross.toFixed(2)}</span>
-                        </div>
-                      )}
+                      </div>
                     </div>
                   );
                 })()}
