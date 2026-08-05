@@ -172,7 +172,14 @@ const zh: Dict = {
   "records.breakHint": "留空 = 用工作預設 {min} 分",
 
   // calendar
+  "cal.summary.title": "本月收入",
+  "cal.summary.days": "已工作 {days} 天",
+  "cal.summary.avg": "平均每日 {amount}",
+  "cal.summary.noData": "本月還沒有紀錄",
+  "cal.prevMonth": "上個月",
+  "cal.nextMonth": "下個月",
   "cal.legend.work": "上班",
+  "cal.legend.income": "當日收入",
   "cal.legend.weekly": "週薪",
   "cal.legend.biweekly": "雙週薪",
   "cal.legend.monthly": "月薪",
@@ -376,7 +383,14 @@ const en: Dict = {
   "records.breakHint": "Empty = job default {min} min",
 
   // calendar
+  "cal.summary.title": "This Month",
+  "cal.summary.days": "{days} days worked",
+  "cal.summary.avg": "{amount} / day avg",
+  "cal.summary.noData": "No records this month",
+  "cal.prevMonth": "Previous month",
+  "cal.nextMonth": "Next month",
   "cal.legend.work": "Work",
+  "cal.legend.income": "Daily income",
   "cal.legend.weekly": "Weekly",
   "cal.legend.biweekly": "Biweekly",
   "cal.legend.monthly": "Monthly",

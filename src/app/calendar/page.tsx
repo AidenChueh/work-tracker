@@ -7,26 +7,19 @@ import { useLocale } from "@/hooks/useLocale";
 import { calcSessionIncome, calcSessionGross, effectiveWorkMs } from "@/lib/income";
 import { formatDuration, fmtTime, fmtDateWeekday } from "@/lib/format";
 import { getCached, hasCached, setCached } from "@/lib/api-cache";
+import { INCOME, PERIOD, RADIUS, SURFACE, TYPE, money, type PeriodKind } from "@/lib/theme";
 import type { Job, WorkSession } from "@/types/api";
-
-type PeriodKind = "weekly" | "biweekly" | "monthly";
 
 type SelectionMode =
   | { type: "day"; date: string }
   | { type: "period"; jobIds: string[]; periodStart: string; periodEnd: string; payDayLabel: string; kind: PeriodKind };
 
-const PERIOD_BG: Record<PeriodKind, string> = {
-  weekly: "bg-amber-500/20",
-  biweekly: "bg-cyan-500/20",
-  monthly: "bg-purple-500/20",
-};
-const PERIOD_BG_FAINT: Record<PeriodKind, string> = {
-  weekly: "bg-amber-500/5",
-  biweekly: "bg-cyan-500/5",
-  monthly: "bg-purple-500/5",
-};
-
 const WEEKDAY_KEYS = ["cal.weekday.mon", "cal.weekday.tue", "cal.weekday.wed", "cal.weekday.thu", "cal.weekday.fri", "cal.weekday.sat", "cal.weekday.sun"] as const;
+const PERIOD_LABEL_KEY: Record<PeriodKind, string> = {
+  weekly: "cal.legend.weekly",
+  biweekly: "cal.legend.biweekly",
+  monthly: "cal.legend.monthly",
+};
 
 function localDateStr(date: Date): string {
   return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
@@ -95,12 +88,9 @@ type BadgeCellProps = {
 };
 
 function BadgeCell({ total, kind, periodStart, periodEnd, periodLabel, matchingJobIds, selection, setSelection }: BadgeCellProps) {
+  const { t } = useLocale();
   const isActive = selection?.type === "period" && selection.periodStart === periodStart.toISOString();
-  const styles: Record<string, string> = {
-    weekly: "bg-amber-500/20 border-amber-500/40 text-amber-400 hover:bg-amber-500/30 ring-amber-400/60",
-    biweekly: "bg-cyan-500/20 border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/30 ring-cyan-400/60",
-    monthly: "bg-purple-500/20 border-purple-500/40 text-purple-400 hover:bg-purple-500/30 ring-purple-400/60",
-  };
+  const style = PERIOD[kind];
   return (
     <button
       onClick={(e) => {
@@ -111,9 +101,10 @@ function BadgeCell({ total, kind, periodStart, periodEnd, periodLabel, matchingJ
             : { type: "period", jobIds: matchingJobIds, periodStart: periodStart.toISOString(), periodEnd: periodEnd.toISOString(), payDayLabel: periodLabel, kind }
         );
       }}
-      className={`mt-0.5 px-1.5 py-0.5 rounded-md border text-[9px] transition-colors leading-tight w-full text-center ${styles[kind]} ${isActive ? "ring-1" : ""}`}
+      className={`mt-1 w-full px-1 py-1 border ${RADIUS.chip} transition-colors ${style.badge} ${isActive ? `ring-1 ${style.ring}` : ""}`}
     >
-      ${total.toFixed(0)}
+      <span className={`block truncate ${TYPE.badgeLabel}`}>{t(PERIOD_LABEL_KEY[kind])}</span>
+      <span className={`mt-1 block ${TYPE.badgeValue}`}>{money(total)}</span>
     </button>
   );
 }
@@ -201,6 +192,18 @@ export default function CalendarPage() {
     }
     return map;
   }, [sessions]);
+
+  const monthStats = useMemo(() => {
+    const days = new Set<string>();
+    let income = 0;
+    for (const s of sessions) {
+      const d = new Date(s.clockIn);
+      if (d.getFullYear() !== viewYear || d.getMonth() !== viewMonth) continue;
+      days.add(localDateStr(d));
+      income += calcSessionIncome(s, taxRate) ?? 0;
+    }
+    return { income, dayCount: days.size, avg: days.size > 0 ? income / days.size : 0 };
+  }, [sessions, viewYear, viewMonth, taxRate]);
 
   const weeklyJobs = useMemo(
     () => jobs.filter((j) => j.payFrequency === "weekly" && j.payDay != null),
@@ -339,16 +342,18 @@ export default function CalendarPage() {
         <div className="flex items-center justify-between mb-4">
           <button
             onClick={() => navigateMonth(-1)}
-            className="p-2 rounded-xl hover:bg-gray-800 text-gray-400 hover:text-white transition-colors"
+            aria-label={t("cal.prevMonth")}
+            className={`-ml-2 w-11 h-11 flex items-center justify-center ${RADIUS.cell} hover:bg-gray-800 active:bg-gray-800 text-gray-400 hover:text-white transition-colors`}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
               <path strokeLinecap="round" d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <span className="text-lg font-semibold">{monthLabel}</span>
+          <span className={TYPE.monthTitle}>{monthLabel}</span>
           <button
             onClick={() => navigateMonth(1)}
-            className="p-2 rounded-xl hover:bg-gray-800 text-gray-400 hover:text-white transition-colors"
+            aria-label={t("cal.nextMonth")}
+            className={`-mr-2 w-11 h-11 flex items-center justify-center ${RADIUS.cell} hover:bg-gray-800 active:bg-gray-800 text-gray-400 hover:text-white transition-colors`}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
               <path strokeLinecap="round" d="M9 5l7 7-7 7" />
@@ -356,10 +361,58 @@ export default function CalendarPage() {
           </button>
         </div>
 
+        {/* Month summary */}
+        <div className={`${SURFACE.card} ${RADIUS.card} px-4 py-4 mb-4 flex items-end justify-between gap-4`}>
+          <div className="min-w-0">
+            <div className={`${TYPE.cardLabel} mb-2`}>{t("cal.summary.title")}</div>
+            <div className={`${TYPE.cardValue} ${INCOME.text}`}>{money(monthStats.income)}</div>
+          </div>
+          <div className="shrink-0 text-right space-y-1">
+            {monthStats.dayCount > 0 ? (
+              <>
+                <div className={TYPE.cardMeta}>{t("cal.summary.days", { days: monthStats.dayCount })}</div>
+                <div className={TYPE.cardMeta}>{t("cal.summary.avg", { amount: money(monthStats.avg) })}</div>
+              </>
+            ) : (
+              <div className={TYPE.cardMeta}>{t("cal.summary.noData")}</div>
+            )}
+          </div>
+        </div>
+
+        {/* Legend */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-3 px-1">
+          <span className={`flex items-center gap-1.5 ${TYPE.legend}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${INCOME.dot}`} />
+            {t("cal.legend.work")}
+          </span>
+          <span className={`flex items-center gap-1.5 ${TYPE.legend}`}>
+            <span className={`px-1 ${RADIUS.pill} ${INCOME.pill} text-[9px] font-semibold leading-4`}>$</span>
+            {t("cal.legend.income")}
+          </span>
+          {weeklyJobs.length > 0 && (
+            <span className={`flex items-center gap-1.5 ${TYPE.legend}`}>
+              <span className={`w-3 h-3 rounded border ${PERIOD.weekly.swatch}`} />
+              {t("cal.legend.weekly")}
+            </span>
+          )}
+          {biweeklyJobs.length > 0 && (
+            <span className={`flex items-center gap-1.5 ${TYPE.legend}`}>
+              <span className={`w-3 h-3 rounded border ${PERIOD.biweekly.swatch}`} />
+              {t("cal.legend.biweekly")}
+            </span>
+          )}
+          {monthlyJobs.length > 0 && (
+            <span className={`flex items-center gap-1.5 ${TYPE.legend}`}>
+              <span className={`w-3 h-3 rounded border ${PERIOD.monthly.swatch}`} />
+              {t("cal.legend.monthly")}
+            </span>
+          )}
+        </div>
+
         {/* Day of week headers */}
         <div className="grid grid-cols-7 mb-1">
-          {WEEKDAY_KEYS.map((k) => (
-            <div key={k} className="text-center text-xs text-gray-500 py-1">{t(k)}</div>
+          {WEEKDAY_KEYS.map((k, i) => (
+            <div key={k} className={`text-center py-1 ${TYPE.weekday} ${i >= 5 ? "text-gray-500" : "text-gray-300"}`}>{t(k)}</div>
           ))}
         </div>
 
@@ -381,12 +434,19 @@ export default function CalendarPage() {
             const isInSelectedPeriod = selection?.type === "period"
               && startOfDay(day).getTime() >= new Date(selection.periodStart).getTime()
               && startOfDay(day).getTime() <= new Date(selection.periodEnd).getTime();
-            const selectedBg = isInSelectedPeriod && selection?.type === "period" ? PERIOD_BG[selection.kind] : "";
+            const selectedBg = isInSelectedPeriod && selection?.type === "period" ? PERIOD[selection.kind].selectedBg : "";
             const faintBg = biweeklyPeriodDaySet.has(dateStr)
-              ? PERIOD_BG_FAINT.biweekly
+              ? PERIOD.biweekly.faintBg
               : weeklyPeriodDaySet.has(dateStr)
-              ? PERIOD_BG_FAINT.weekly
+              ? PERIOD.weekly.faintBg
               : "";
+            const cellBg = isSelected
+              ? SURFACE.selected
+              : isInSelectedPeriod
+              ? selectedBg
+              : isToday
+              ? SURFACE.today
+              : faintBg;
 
             return (
               <div
@@ -395,21 +455,21 @@ export default function CalendarPage() {
                   if (!isClickable) return;
                   setSelection(isSelected ? null : { type: "day", date: dateStr });
                 }}
-                className={`relative flex flex-col items-center pt-1 pb-1.5 rounded-xl min-h-[64px] transition-colors
-                  ${isClickable ? "cursor-pointer hover:bg-gray-800" : ""}
-                  ${isSelected ? "bg-gray-800 ring-1 ring-blue-500" : isInSelectedPeriod ? selectedBg : faintBg}
+                className={`relative flex flex-col items-center gap-1 px-0.5 py-2 ${RADIUS.cell} min-h-[68px] transition-colors
+                  ${isClickable ? `cursor-pointer ${SURFACE.hover}` : ""}
+                  ${cellBg}
                 `}
               >
-                <div className={`w-7 h-7 flex items-center justify-center rounded-full text-sm font-medium mb-0.5
-                  ${isToday ? "bg-blue-600 text-white" : isCurrentMonth ? "text-white" : "text-gray-700"}
+                <span className={`${TYPE.dayNum}
+                  ${!isCurrentMonth ? "text-gray-700" : isToday ? "text-blue-200" : "text-white"}
                 `}>
                   {day.getDate()}
-                </div>
+                </span>
 
                 {daySessions.length > 0 && (
-                  <div className="flex gap-0.5 mb-0.5">
+                  <div className="flex items-center gap-0.5">
                     {daySessions.slice(0, 3).map((s) => (
-                      <div key={s.id} className="w-1 h-1 bg-green-400 rounded-full" />
+                      <div key={s.id} className={`w-1 h-1 rounded-full ${INCOME.dot}`} />
                     ))}
                     {daySessions.length > 3 && (
                       <span className="text-[9px] text-gray-500 leading-none">+{daySessions.length - 3}</span>
@@ -417,11 +477,13 @@ export default function CalendarPage() {
                   </div>
                 )}
 
-                {hasIncome && dayIncome > 0 && (
-                  <span className="text-[10px] text-green-400 leading-tight">
-                    ${dayIncome.toFixed(0)}
+                {hasIncome && dayIncome > 0 ? (
+                  <span className={`px-1.5 py-0.5 ${RADIUS.pill} ${TYPE.dayIncome} ${isToday ? INCOME.pillToday : INCOME.pill}`}>
+                    {money(dayIncome)}
                   </span>
-                )}
+                ) : isCurrentMonth && daySessions.length === 0 ? (
+                  <span className={TYPE.dayEmpty}>–</span>
+                ) : null}
 
                 {weeklyBadge && (() => {
                   const cellDow = day.getDay();
@@ -473,32 +535,6 @@ export default function CalendarPage() {
               </div>
             );
           })}
-        </div>
-
-        {/* Legend */}
-        <div className="flex flex-wrap gap-3 mt-3 px-1">
-          <div className="flex items-center gap-1.5 text-xs text-gray-500">
-            <div className="w-1.5 h-1.5 bg-green-400 rounded-full" />
-            {t("cal.legend.work")}
-          </div>
-          {weeklyJobs.length > 0 && (
-            <div className="flex items-center gap-1.5 text-xs text-gray-500">
-              <div className="w-3 h-3 rounded bg-amber-500/30 border border-amber-500/50" />
-              {t("cal.legend.weekly")}
-            </div>
-          )}
-          {biweeklyJobs.length > 0 && (
-            <div className="flex items-center gap-1.5 text-xs text-gray-500">
-              <div className="w-3 h-3 rounded bg-cyan-500/30 border border-cyan-500/50" />
-              {t("cal.legend.biweekly")}
-            </div>
-          )}
-          {monthlyJobs.length > 0 && (
-            <div className="flex items-center gap-1.5 text-xs text-gray-500">
-              <div className="w-3 h-3 rounded bg-purple-500/30 border border-purple-500/50" />
-              {t("cal.legend.monthly")}
-            </div>
-          )}
         </div>
 
         {/* Detail panel */}
