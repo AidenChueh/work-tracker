@@ -28,6 +28,10 @@ export function fmtTime(iso: string): string {
   return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
 }
 
+export function fmtMonthDay(d: Date): string {
+  return getLocale() === "en" ? `${MONTH_SHORT_EN[d.getMonth()]} ${d.getDate()}` : `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
 export function fmtDateWeekday(iso: string): string {
   const d = new Date(iso);
   const md = `${d.getMonth() + 1}/${d.getDate()}`;

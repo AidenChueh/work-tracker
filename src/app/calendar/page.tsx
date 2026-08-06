@@ -6,7 +6,7 @@ import { useTaxRate } from "@/hooks/useTaxRate";
 import { useLocale } from "@/hooks/useLocale";
 import { useIncomeMode, type IncomeMode } from "@/hooks/useIncomeMode";
 import { calcSessionIncome, calcSessionGross, totalWorkMs } from "@/lib/income";
-import { formatDuration, formatHoursMinutes, fmtTime, fmtDateWeekday } from "@/lib/format";
+import { formatDuration, formatHoursMinutes, fmtTime, fmtDateWeekday, fmtMonthDay } from "@/lib/format";
 import { getCached, hasCached, setCached } from "@/lib/api-cache";
 import { INCOME, PERIOD, RADIUS, SPACE, SURFACE, TYPE, money, type PeriodKind } from "@/lib/theme";
 import type { Job, WorkSession } from "@/types/api";
@@ -20,6 +20,11 @@ const PERIOD_LABEL_KEY: Record<PeriodKind, string> = {
   weekly: "cal.legend.weekly",
   biweekly: "cal.legend.biweekly",
   monthly: "cal.legend.monthly",
+};
+const PERIOD_RANGE_KEY: Record<PeriodKind, string> = {
+  weekly: "cal.period.weekly",
+  biweekly: "cal.period.biweekly",
+  monthly: "cal.period.monthly",
 };
 
 function localDateStr(date: Date): string {
@@ -248,6 +253,16 @@ export default function CalendarPage() {
     [jobs]
   );
 
+  // 每個工作實際有上班的日期；Highlight 只落在這些日子上，代表「這些天組成這筆薪資」
+  const workDaysByJob = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const s of sessions) {
+      if (!map.has(s.jobId)) map.set(s.jobId, new Set());
+      map.get(s.jobId)!.add(localDateStr(new Date(s.clockIn)));
+    }
+    return map;
+  }, [sessions]);
+
   const weeklyPeriodDaySet = useMemo(() => {
     const set = new Set<string>();
     for (const day of calendarDays) {
@@ -255,13 +270,18 @@ export default function CalendarPage() {
       for (const job of weeklyJobs) {
         if (job.payDay === cellDow) {
           const { start, end } = periodForCellWithSpan(day, job.payWeekStart, 7);
+          const worked = workDaysByJob.get(job.id);
           let cur = new Date(start);
-          while (cur <= end) { set.add(localDateStr(cur)); cur.setDate(cur.getDate() + 1); }
+          while (cur <= end) {
+            const key = localDateStr(cur);
+            if (worked?.has(key)) set.add(key);
+            cur.setDate(cur.getDate() + 1);
+          }
         }
       }
     }
     return set;
-  }, [calendarDays, weeklyJobs]);
+  }, [calendarDays, weeklyJobs, workDaysByJob]);
 
   const biweeklyPeriodDaySet = useMemo(() => {
     const set = new Set<string>();
@@ -269,13 +289,18 @@ export default function CalendarPage() {
       for (const job of biweeklyJobs) {
         if (isBiweeklyPayday(day, job)) {
           const { start, end } = periodForCellWithSpan(day, job.payWeekStart, 14);
+          const worked = workDaysByJob.get(job.id);
           let cur = new Date(start);
-          while (cur <= end) { set.add(localDateStr(cur)); cur.setDate(cur.getDate() + 1); }
+          while (cur <= end) {
+            const key = localDateStr(cur);
+            if (worked?.has(key)) set.add(key);
+            cur.setDate(cur.getDate() + 1);
+          }
         }
       }
     }
     return set;
-  }, [calendarDays, biweeklyJobs]);
+  }, [calendarDays, biweeklyJobs, workDaysByJob]);
 
   function getWeeklyBadge(cellDate: Date): { total: number; jobCount: number } | null {
     const cellDow = cellDate.getDay();
@@ -341,6 +366,11 @@ export default function CalendarPage() {
     });
     return { sessions: periodSessions, label: selection.payDayLabel };
   }, [selection, sessions, sessionsByDay]);
+
+  const selectedDaySet = useMemo(() => {
+    if (selection?.type !== "period" || !detailData) return null;
+    return new Set(detailData.sessions.map((s) => localDateStr(new Date(s.clockIn))));
+  }, [selection, detailData]);
 
   function navigateMonth(delta: number) {
     setViewMonth((m) => {
@@ -434,8 +464,23 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        {/* Legend */}
-        <div className={`flex flex-wrap items-center gap-x-3 gap-y-2 px-1 ${SPACE.afterLegend}`}>
+        {/* Selected pay period */}
+        {selection?.type === "period" && detailData && (() => {
+          const style = PERIOD[selection.kind];
+          const jobNames = jobs.filter((j) => selection.jobIds.includes(j.id)).map((j) => j.name).join("・");
+          const total = detailData.sessions.reduce((sum, s) => sum + (amountOf(s) ?? 0), 0);
+          return (
+            <div className={`animate-fade-in ${SPACE.afterCard} flex items-center gap-2 px-3 py-2 border ${RADIUS.chip} ${style.banner}`}>
+              <span className={`shrink-0 ${TYPE.statLabel} ${style.bannerLabel}`}>{t(PERIOD_RANGE_KEY[selection.kind])}</span>
+              <span className={`shrink-0 ${TYPE.statValue}`}>{selection.payDayLabel}</span>
+              <span className={`min-w-0 truncate ${TYPE.statLabel}`}>{jobNames}</span>
+              <span className={`ml-auto shrink-0 ${TYPE.cardSubValue} ${INCOME.text}`}>{money(total)}</span>
+            </div>
+          );
+        })()}
+
+        {/* Legend — 選取薪資週時由上方的區間說明列取代 */}
+        <div className={`flex flex-wrap items-center gap-x-3 gap-y-2 px-1 ${SPACE.afterLegend} ${selection?.type === "period" ? "hidden" : ""}`}>
           <span className={`flex items-center gap-1.5 ${TYPE.legend}`}>
             <span className={`w-1.5 h-1.5 rounded-full ${INCOME.dot}`} />
             {t("cal.legend.work")}
@@ -486,21 +531,20 @@ export default function CalendarPage() {
             const isSelected = selection?.type === "day" && selection.date === dateStr;
             const isFuture = day > new Date();
             const isClickable = isCurrentMonth && !isFuture && daySessions.length > 0;
-            const isInSelectedPeriod = selection?.type === "period"
-              && startOfDay(day).getTime() >= new Date(selection.periodStart).getTime()
-              && startOfDay(day).getTime() <= new Date(selection.periodEnd).getTime();
+            const isInSelectedPeriod = selection?.type === "period" && (selectedDaySet?.has(dateStr) ?? false);
             const selectedBg = isInSelectedPeriod && selection?.type === "period" ? PERIOD[selection.kind].selectedBg : "";
             const faintBg = biweeklyPeriodDaySet.has(dateStr)
               ? PERIOD.biweekly.faintBg
               : weeklyPeriodDaySet.has(dateStr)
               ? PERIOD.weekly.faintBg
               : "";
+            // Today 永遠優先於薪資週 Highlight
             const cellBg = isSelected
               ? SURFACE.selected
-              : isInSelectedPeriod
-              ? selectedBg
               : isToday
               ? SURFACE.today
+              : isInSelectedPeriod
+              ? selectedBg
               : faintBg;
 
             return (
@@ -510,7 +554,7 @@ export default function CalendarPage() {
                   if (!isClickable) return;
                   setSelection(isSelected ? null : { type: "day", date: dateStr });
                 }}
-                className={`relative flex flex-col items-center px-1 pt-2 pb-2.5 ${RADIUS.cell} min-h-[76px] transition-colors
+                className={`relative flex flex-col items-center px-1 pt-2 pb-2.5 ${RADIUS.cell} min-h-[76px] transition-[background-color,box-shadow] duration-200 ease-out
                   ${isClickable ? `cursor-pointer ${SURFACE.hover}` : ""}
                   ${cellBg}
                 `}
@@ -544,12 +588,11 @@ export default function CalendarPage() {
                   const cellDow = day.getDay();
                   const matchingJob = weeklyJobs.find((j) => j.payDay === cellDow);
                   const { start, end } = periodForCellWithSpan(day, matchingJob?.payWeekStart, 7);
-                  const localeStr = locale === "en" ? "en-US" : "zh-TW";
                   return (
                     <BadgeCell
                       total={weeklyBadge.total} kind="weekly"
                       periodStart={start} periodEnd={end}
-                      periodLabel={`${start.toLocaleDateString(localeStr)} – ${end.toLocaleDateString(localeStr)}`}
+                      periodLabel={`${fmtMonthDay(start)} – ${fmtMonthDay(end)}`}
                       matchingJobIds={weeklyJobs.filter((j) => j.payDay === cellDow).map((j) => j.id)}
                       selection={selection} setSelection={setSelection}
                     />
@@ -559,12 +602,11 @@ export default function CalendarPage() {
                 {biweeklyBadge && (() => {
                   const matchingJob = biweeklyJobs.find((j) => isBiweeklyPayday(day, j));
                   const { start, end } = periodForCellWithSpan(day, matchingJob?.payWeekStart, 14);
-                  const localeStr = locale === "en" ? "en-US" : "zh-TW";
                   return (
                     <BadgeCell
                       total={biweeklyBadge.total} kind="biweekly"
                       periodStart={start} periodEnd={end}
-                      periodLabel={`${start.toLocaleDateString(localeStr)} – ${end.toLocaleDateString(localeStr)}`}
+                      periodLabel={`${fmtMonthDay(start)} – ${fmtMonthDay(end)}`}
                       matchingJobIds={biweeklyJobs.filter((j) => isBiweeklyPayday(day, j)).map((j) => j.id)}
                       selection={selection} setSelection={setSelection}
                     />

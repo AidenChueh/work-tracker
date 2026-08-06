@@ -54,33 +54,42 @@ export const INCOME = {
   text: "text-emerald-400",
 } as const;
 
+// Highlight 只是提示：未選取 8%、選取 12% + 內描邊，永遠低於收入 Badge 的視覺權重
 export const PERIOD: Record<PeriodKind, {
   selectedBg: string;
   faintBg: string;
   badge: string;
   ring: string;
   swatch: string;
+  banner: string;
+  bannerLabel: string;
 }> = {
   weekly: {
-    selectedBg: "bg-amber-500/20",
-    faintBg: "bg-amber-500/5",
+    selectedBg: "bg-amber-500/[0.12] ring-1 ring-inset ring-amber-500/30",
+    faintBg: "bg-amber-500/[0.08]",
     badge: "bg-amber-500/10 border-amber-500/20 text-amber-300/80 hover:bg-amber-500/20",
     ring: "ring-amber-400/50",
     swatch: "bg-amber-500/20 border-amber-500/35",
+    banner: "bg-amber-500/[0.08] border-amber-500/25",
+    bannerLabel: "text-amber-300/90",
   },
   biweekly: {
-    selectedBg: "bg-cyan-500/20",
-    faintBg: "bg-cyan-500/5",
+    selectedBg: "bg-cyan-500/[0.12] ring-1 ring-inset ring-cyan-500/30",
+    faintBg: "bg-cyan-500/[0.08]",
     badge: "bg-cyan-500/10 border-cyan-500/20 text-cyan-300/80 hover:bg-cyan-500/20",
     ring: "ring-cyan-400/50",
     swatch: "bg-cyan-500/20 border-cyan-500/35",
+    banner: "bg-cyan-500/[0.08] border-cyan-500/25",
+    bannerLabel: "text-cyan-300/90",
   },
   monthly: {
-    selectedBg: "bg-purple-500/20",
-    faintBg: "bg-purple-500/5",
+    selectedBg: "bg-purple-500/[0.12] ring-1 ring-inset ring-purple-500/30",
+    faintBg: "bg-purple-500/[0.08]",
     badge: "bg-purple-500/10 border-purple-500/20 text-purple-300/80 hover:bg-purple-500/20",
     ring: "ring-purple-400/50",
     swatch: "bg-purple-500/20 border-purple-500/35",
+    banner: "bg-purple-500/[0.08] border-purple-500/25",
+    bannerLabel: "text-purple-300/90",
   },
 };
 
