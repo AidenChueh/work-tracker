@@ -16,11 +16,6 @@ type SelectionMode =
   | { type: "period"; jobIds: string[]; periodStart: string; periodEnd: string; payDayLabel: string; kind: PeriodKind };
 
 const WEEKDAY_KEYS = ["cal.weekday.mon", "cal.weekday.tue", "cal.weekday.wed", "cal.weekday.thu", "cal.weekday.fri", "cal.weekday.sat", "cal.weekday.sun"] as const;
-const PERIOD_LABEL_KEY: Record<PeriodKind, string> = {
-  weekly: "cal.legend.weekly",
-  biweekly: "cal.legend.biweekly",
-  monthly: "cal.legend.monthly",
-};
 const PERIOD_RANGE_KEY: Record<PeriodKind, string> = {
   weekly: "cal.period.weekly",
   biweekly: "cal.period.biweekly",
@@ -103,7 +98,6 @@ type BadgeCellProps = {
 };
 
 function BadgeCell({ total, kind, periodStart, periodEnd, periodLabel, matchingJobIds, selection, setSelection }: BadgeCellProps) {
-  const { t } = useLocale();
   const isActive = selection?.type === "period" && selection.periodStart === periodStart.toISOString();
   const style = PERIOD[kind];
   return (
@@ -116,9 +110,8 @@ function BadgeCell({ total, kind, periodStart, periodEnd, periodLabel, matchingJ
             : { type: "period", jobIds: matchingJobIds, periodStart: periodStart.toISOString(), periodEnd: periodEnd.toISOString(), payDayLabel: periodLabel, kind }
         );
       }}
-      className={`mt-1.5 w-full px-1 py-0.5 border ${RADIUS.pill} transition-colors ${style.badge} ${isActive ? `ring-1 ${style.ring}` : ""}`}
+      className={`mt-1.5 w-full px-1 py-1 border ${RADIUS.pill} transition-colors ${style.badge} ${isActive ? `ring-1 ${style.ring}` : ""}`}
     >
-      <span className={`block truncate ${TYPE.badgeLabel}`}>{t(PERIOD_LABEL_KEY[kind])}</span>
       <span className={`block ${TYPE.badgeValue}`}>{money(total)}</span>
     </button>
   );

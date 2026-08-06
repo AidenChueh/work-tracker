@@ -54,7 +54,6 @@ const zh: Dict = {
   "settings.logout": "登出（清除本機資料）",
 
   // home
-  "home.welcome": "歡迎，{name}",
   "home.activeWith": "打卡中 — {name}",
   "home.since": "自 {time}",
   "home.clockIn": "打卡上班",
@@ -69,7 +68,6 @@ const zh: Dict = {
   "home.publicHoliday": "國定假日",
   "home.todayRevenue": "今日業績",
   "home.recent": "最近紀錄",
-  "home.editName": "編輯名字",
   "home.fixedTag": "固定",
   "home.clockFailed": "操作失敗，請稍後再試",
 
@@ -272,7 +270,6 @@ const en: Dict = {
   "settings.logout": "Sign Out (clear local data)",
 
   // home
-  "home.welcome": "Welcome, {name}",
   "home.activeWith": "Working — {name}",
   "home.since": "Since {time}",
   "home.clockIn": "Clock In",
@@ -287,7 +284,6 @@ const en: Dict = {
   "home.publicHoliday": "Public Holiday",
   "home.todayRevenue": "Today's Revenue",
   "home.recent": "Recent",
-  "home.editName": "Edit name",
   "home.fixedTag": "fixed",
   "home.clockFailed": "Operation failed. Try again.",
 

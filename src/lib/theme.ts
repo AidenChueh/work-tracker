@@ -10,7 +10,7 @@ export const RADIUS = {
 export const SPACE = {
   page: "px-4 py-6",
   card: "px-4 py-4",
-  afterHeader: "mb-6",
+  afterHeader: "mb-4",
   afterCard: "mb-4",
   afterLegend: "mb-2",
   stat: "mt-1.5",
@@ -42,7 +42,6 @@ export const TYPE = {
   dayNum: "text-[13px] font-semibold leading-4 tabular-nums",
   dayIncome: "text-[10px] font-semibold leading-[14px] tabular-nums",
   dayEmpty: "text-[11px] leading-[14px] text-gray-700",
-  badgeLabel: "text-[7px] font-medium leading-[9px] tracking-wide",
   badgeValue: "text-[9px] font-semibold leading-[11px] tabular-nums",
   legend: "text-[11px] leading-4 text-gray-400",
 } as const;
