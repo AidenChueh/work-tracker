@@ -51,7 +51,13 @@ function getEffectiveHourlyRate(session: SessionBase): number | null {
   return job.hourlyRate;
 }
 
-// 有效工時（毫秒）＝總時數 − 手動不帶薪休息 − 工作預設/覆寫休息；金額與顯示工時共用此計算
+// 顯示用工時（毫秒）＝上班到下班的總時數，休息時間照算
+export function totalWorkMs(session: SessionBase): number | null {
+  if (!session.clockOut) return null;
+  return Math.max(0, new Date(session.clockOut).getTime() - new Date(session.clockIn).getTime());
+}
+
+// 計薪工時（毫秒）＝總時數 − 手動不帶薪休息 − 工作預設/覆寫休息；只用於算錢，顯示工時請用 totalWorkMs
 export function effectiveWorkMs(session: SessionBase): number | null {
   if (!session.clockOut) return null;
   const job = payRules(session);

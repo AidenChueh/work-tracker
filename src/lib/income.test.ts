@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calcSessionGross, calcSessionIncome, effectiveWorkMs, type JobBase, type SessionBase } from "./income";
+import { calcSessionGross, calcSessionIncome, effectiveWorkMs, totalWorkMs, type JobBase, type SessionBase } from "./income";
 
 function makeJob(overrides: Partial<JobBase> = {}): JobBase {
   return {
@@ -39,19 +39,45 @@ function makeSession(overrides: Partial<SessionBase> = {}): SessionBase {
   };
 }
 
-describe("effectiveWorkMs — 平均工時的計算基礎", () => {
+describe("totalWorkMs — 顯示用工時（休息照算）", () => {
   const HOUR = 3600000;
 
   it("9:00–17:00 = 8 小時", () => {
-    expect(effectiveWorkMs(makeSession())).toBe(8 * HOUR);
+    expect(totalWorkMs(makeSession())).toBe(8 * HOUR);
   });
 
   it("跨夜班 22:00 到隔日 02:00 = 4 小時", () => {
     const clockIn = new Date(2026, 5, 3, 22, 0, 0, 0);
     const clockOut = new Date(2026, 5, 4, 2, 0, 0, 0);
     expect(
-      effectiveWorkMs(makeSession({ clockIn: clockIn.toISOString(), clockOut: clockOut.toISOString() }))
+      totalWorkMs(makeSession({ clockIn: clockIn.toISOString(), clockOut: clockOut.toISOString() }))
     ).toBe(4 * HOUR);
+  });
+
+  it("工作預設休息 30 分不影響顯示工時，仍為 8 小時", () => {
+    expect(totalWorkMs(makeSession({ job: makeJob({ breakDuration: 30 }) }))).toBe(8 * HOUR);
+  });
+
+  it("不帶薪的手動休息也不扣，仍為 8 小時", () => {
+    expect(
+      totalWorkMs(
+        makeSession({
+          breaks: [{ startTime: isoAt(3, 12), endTime: isoAt(3, 12, 30), isPaid: false }],
+        })
+      )
+    ).toBe(8 * HOUR);
+  });
+
+  it("未下班回傳 null", () => {
+    expect(totalWorkMs(makeSession({ clockOut: null }))).toBeNull();
+  });
+});
+
+describe("effectiveWorkMs — 計薪工時（扣休息）", () => {
+  const HOUR = 3600000;
+
+  it("9:00–17:00 無休息 = 8 小時", () => {
+    expect(effectiveWorkMs(makeSession())).toBe(8 * HOUR);
   });
 
   it("扣除工作預設休息 30 分後為 7.5 小時", () => {

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useDevice } from "@/hooks/useDevice";
 import { useTaxRate } from "@/hooks/useTaxRate";
 import { useLocale } from "@/hooks/useLocale";
-import { calcSessionIncome, effectiveWorkMs } from "@/lib/income";
+import { calcSessionIncome, totalWorkMs } from "@/lib/income";
 import { formatDuration, fmtTime, fmtDateWeekday, formatTodayLabel } from "@/lib/format";
 import { getCached, hasCached, setCached } from "@/lib/api-cache";
 import { SettingsModal } from "@/components/SettingsModal";
@@ -456,7 +456,7 @@ export default function Home() {
             <h2 className="text-gray-400 text-xs uppercase tracking-wide mb-3">{t("home.recent")}</h2>
             <div className="space-y-1">
               {recentSessions.map((session) => {
-                const duration = effectiveWorkMs(session) ?? 0;
+                const duration = totalWorkMs(session) ?? 0;
                 const net = calcSessionIncome(session, taxRate);
                 return (
                   <div key={session.id} className="bg-gray-800 rounded-xl p-4">

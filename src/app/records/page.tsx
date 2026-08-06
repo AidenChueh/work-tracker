@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useDevice } from "@/hooks/useDevice";
 import { useTaxRate } from "@/hooks/useTaxRate";
 import { useLocale } from "@/hooks/useLocale";
-import { calcSessionIncome, calcSessionGross, payRules, effectiveWorkMs } from "@/lib/income";
+import { calcSessionIncome, calcSessionGross, payRules, totalWorkMs } from "@/lib/income";
 import { formatDuration, fmtTime, fmtDateWeekday } from "@/lib/format";
 import { getCached, hasCached, setCached } from "@/lib/api-cache";
 import type { Job, WorkSession } from "@/types/api";
@@ -687,7 +687,7 @@ export default function RecordsPage() {
                               }
 
                               const net = calcSessionIncome(s, taxRate);
-                              const duration = effectiveWorkMs(s) ?? 0;
+                              const duration = totalWorkMs(s) ?? 0;
                               return (
                                 <div key={s.id} className="bg-gray-900 rounded-xl px-3 py-2.5">
                                   <div className="grid grid-cols-2 gap-y-1 items-center mb-2">

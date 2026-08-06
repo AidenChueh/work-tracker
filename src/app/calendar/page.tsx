@@ -5,10 +5,10 @@ import { useDevice } from "@/hooks/useDevice";
 import { useTaxRate } from "@/hooks/useTaxRate";
 import { useLocale } from "@/hooks/useLocale";
 import { useIncomeMode, type IncomeMode } from "@/hooks/useIncomeMode";
-import { calcSessionIncome, calcSessionGross, effectiveWorkMs } from "@/lib/income";
+import { calcSessionIncome, calcSessionGross, totalWorkMs } from "@/lib/income";
 import { formatDuration, formatHoursMinutes, fmtTime, fmtDateWeekday } from "@/lib/format";
 import { getCached, hasCached, setCached } from "@/lib/api-cache";
-import { INCOME, PERIOD, RADIUS, SURFACE, TYPE, money, type PeriodKind } from "@/lib/theme";
+import { INCOME, PERIOD, RADIUS, SPACE, SURFACE, TYPE, money, type PeriodKind } from "@/lib/theme";
 import type { Job, WorkSession } from "@/types/api";
 
 type SelectionMode =
@@ -77,6 +77,15 @@ function isBiweeklyPayday(cellDate: Date, job: Job): boolean {
   return days % 14 === 0;
 }
 
+function StatField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <div className={TYPE.statLabel}>{label}</div>
+      <div className={`${SPACE.stat} ${TYPE.statValue} truncate`}>{value}</div>
+    </div>
+  );
+}
+
 type BadgeCellProps = {
   total: number;
   kind: PeriodKind;
@@ -102,10 +111,10 @@ function BadgeCell({ total, kind, periodStart, periodEnd, periodLabel, matchingJ
             : { type: "period", jobIds: matchingJobIds, periodStart: periodStart.toISOString(), periodEnd: periodEnd.toISOString(), payDayLabel: periodLabel, kind }
         );
       }}
-      className={`mt-1 w-full px-1 py-1 border ${RADIUS.chip} transition-colors ${style.badge} ${isActive ? `ring-1 ${style.ring}` : ""}`}
+      className={`mt-1.5 w-full px-1 py-0.5 border ${RADIUS.pill} transition-colors ${style.badge} ${isActive ? `ring-1 ${style.ring}` : ""}`}
     >
       <span className={`block truncate ${TYPE.badgeLabel}`}>{t(PERIOD_LABEL_KEY[kind])}</span>
-      <span className={`mt-1 block ${TYPE.badgeValue}`}>{money(total)}</span>
+      <span className={`block ${TYPE.badgeValue}`}>{money(total)}</span>
     </button>
   );
 }
@@ -211,7 +220,7 @@ export default function CalendarPage() {
       const key = localDateStr(d);
       days.add(key);
       income += amountOf(s) ?? 0;
-      const ms = effectiveWorkMs(s);
+      const ms = totalWorkMs(s);
       if (ms !== null) {
         workMs += ms;
         workedDays.add(key);
@@ -221,6 +230,7 @@ export default function CalendarPage() {
       income,
       dayCount: days.size,
       avgIncome: days.size > 0 ? income / days.size : 0,
+      totalWorkMs: workedDays.size > 0 ? workMs : null,
       avgWorkMs: workedDays.size > 0 ? workMs / workedDays.size : null,
     };
   }, [sessions, viewYear, viewMonth, amountOf]);
@@ -356,33 +366,33 @@ export default function CalendarPage() {
 
   return (
     <main className="bg-gray-950 text-white">
-      <div className="max-w-md mx-auto px-4 py-6">
+      <div className={`max-w-md mx-auto ${SPACE.page}`}>
 
         {/* Month navigation */}
-        <div className="flex items-center justify-between mb-4">
+        <div className={`flex items-center justify-between ${SPACE.afterHeader}`}>
           <button
             onClick={() => navigateMonth(-1)}
             aria-label={t("cal.prevMonth")}
-            className={`-ml-2 w-11 h-11 flex items-center justify-center ${RADIUS.cell} hover:bg-gray-800 active:bg-gray-800 text-gray-400 hover:text-white transition-colors`}
+            className={`-ml-2 w-11 h-11 flex items-center justify-center ${RADIUS.cell} ${SURFACE.navBtn} text-gray-400 hover:text-white transition-all duration-150`}
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" d="M15 19l-7-7 7-7" />
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
             </svg>
           </button>
           <span className={TYPE.monthTitle}>{monthLabel}</span>
           <button
             onClick={() => navigateMonth(1)}
             aria-label={t("cal.nextMonth")}
-            className={`-mr-2 w-11 h-11 flex items-center justify-center ${RADIUS.cell} hover:bg-gray-800 active:bg-gray-800 text-gray-400 hover:text-white transition-colors`}
+            className={`-mr-2 w-11 h-11 flex items-center justify-center ${RADIUS.cell} ${SURFACE.navBtn} text-gray-400 hover:text-white transition-all duration-150`}
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" d="M9 5l7 7-7 7" />
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
             </svg>
           </button>
         </div>
 
         {/* Month summary */}
-        <div className={`${SURFACE.card} ${RADIUS.card} px-4 py-3.5 mb-4`}>
+        <div className={`${SURFACE.card} ${RADIUS.card} ${SPACE.card} ${SPACE.afterCard}`}>
           <div className="flex items-center justify-between gap-3">
             <span className={TYPE.cardLabel}>{t("cal.summary.title")}</span>
             <div className={`flex items-center gap-0.5 p-0.5 ${RADIUS.chip} ${SURFACE.segment}`}>
@@ -398,31 +408,34 @@ export default function CalendarPage() {
             </div>
           </div>
 
-          <div className="mt-2 flex items-baseline gap-2">
+          <div className="mt-2 flex items-end justify-between gap-3">
             <span className={`${TYPE.cardValue} ${INCOME.text}`}>{money(monthStats.income)}</span>
-            {monthStats.dayCount > 0 && (
-              <span className={TYPE.cardMeta}>{t("cal.summary.avgIncome", { amount: money(monthStats.avgIncome) })}</span>
-            )}
+            <div className="shrink-0 text-right">
+              <div className={TYPE.cardSubLabel}>{t("cal.summary.avgIncome")}</div>
+              <div className={`mt-1 ${TYPE.cardSubValue} ${monthStats.dayCount > 0 ? "text-gray-100" : "text-gray-600"}`}>
+                {monthStats.dayCount > 0 ? money(monthStats.avgIncome) : "—"}
+              </div>
+            </div>
           </div>
 
-          <div className={`mt-3 pt-3 grid grid-cols-2 gap-3 ${SURFACE.divider}`}>
-            <div>
-              <div className={TYPE.statLabel}>{t("cal.summary.days")}</div>
-              <div className={`mt-1.5 ${TYPE.statValue}`}>
-                {monthStats.dayCount > 0 ? t("cal.summary.daysValue", { days: monthStats.dayCount }) : "—"}
-              </div>
-            </div>
-            <div>
-              <div className={TYPE.statLabel}>{t("cal.summary.avgHours")}</div>
-              <div className={`mt-1.5 ${TYPE.statValue}`}>
-                {monthStats.avgWorkMs !== null ? formatHoursMinutes(monthStats.avgWorkMs) : "—"}
-              </div>
-            </div>
+          <div className={`mt-4 pt-4 grid grid-cols-3 gap-3 ${SURFACE.divider}`}>
+            <StatField
+              label={t("cal.summary.days")}
+              value={monthStats.dayCount > 0 ? t("cal.summary.daysValue", { days: monthStats.dayCount }) : "—"}
+            />
+            <StatField
+              label={t("cal.summary.totalHours")}
+              value={monthStats.totalWorkMs !== null ? formatHoursMinutes(monthStats.totalWorkMs) : "—"}
+            />
+            <StatField
+              label={t("cal.summary.avgHours")}
+              value={monthStats.avgWorkMs !== null ? formatHoursMinutes(monthStats.avgWorkMs) : "—"}
+            />
           </div>
         </div>
 
         {/* Legend */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-3 px-1">
+        <div className={`flex flex-wrap items-center gap-x-3 gap-y-2 px-1 ${SPACE.afterLegend}`}>
           <span className={`flex items-center gap-1.5 ${TYPE.legend}`}>
             <span className={`w-1.5 h-1.5 rounded-full ${INCOME.dot}`} />
             {t("cal.legend.work")}
@@ -452,14 +465,14 @@ export default function CalendarPage() {
         </div>
 
         {/* Day of week headers */}
-        <div className="grid grid-cols-7 mb-1">
+        <div className="grid grid-cols-7 mb-1.5">
           {WEEKDAY_KEYS.map((k, i) => (
-            <div key={k} className={`text-center py-1 ${TYPE.weekday} ${i >= 5 ? "text-gray-500" : "text-gray-300"}`}>{t(k)}</div>
+            <div key={k} className={`text-center py-1.5 ${TYPE.weekday} ${i >= 5 ? "text-gray-500" : "text-gray-200"}`}>{t(k)}</div>
           ))}
         </div>
 
         {/* Calendar grid */}
-        <div className="grid grid-cols-7 gap-y-1">
+        <div className={`grid grid-cols-7 ${SPACE.cellGap}`}>
           {calendarDays.map((day) => {
             const dateStr = localDateStr(day);
             const isCurrentMonth = day.getMonth() === viewMonth;
@@ -497,34 +510,34 @@ export default function CalendarPage() {
                   if (!isClickable) return;
                   setSelection(isSelected ? null : { type: "day", date: dateStr });
                 }}
-                className={`relative flex flex-col items-center gap-1 px-0.5 py-2 ${RADIUS.cell} min-h-[68px] transition-colors
+                className={`relative flex flex-col items-center px-1 pt-2 pb-2.5 ${RADIUS.cell} min-h-[76px] transition-colors
                   ${isClickable ? `cursor-pointer ${SURFACE.hover}` : ""}
                   ${cellBg}
                 `}
               >
                 <span className={`${TYPE.dayNum}
-                  ${!isCurrentMonth ? "text-gray-700" : isToday ? "text-blue-200" : "text-white"}
+                  ${!isCurrentMonth ? "text-gray-700" : isToday ? "text-white" : "text-gray-100"}
                 `}>
                   {day.getDate()}
                 </span>
 
                 {daySessions.length > 0 && (
-                  <div className="flex items-center gap-0.5">
+                  <div className="mt-1.5 flex items-center gap-0.5">
                     {daySessions.slice(0, 3).map((s) => (
                       <div key={s.id} className={`w-1 h-1 rounded-full ${INCOME.dot}`} />
                     ))}
                     {daySessions.length > 3 && (
-                      <span className="text-[9px] text-gray-500 leading-none">+{daySessions.length - 3}</span>
+                      <span className="text-[9px] leading-none text-gray-500">+{daySessions.length - 3}</span>
                     )}
                   </div>
                 )}
 
                 {hasIncome && dayIncome > 0 ? (
-                  <span className={`px-1.5 py-0.5 ${RADIUS.pill} ${TYPE.dayIncome} ${isToday ? INCOME.pillToday : INCOME.pill}`}>
+                  <span className={`mt-1.5 px-1.5 py-0.5 ${RADIUS.pill} ${TYPE.dayIncome} ${isToday ? INCOME.pillToday : INCOME.pill}`}>
                     {money(dayIncome)}
                   </span>
                 ) : isCurrentMonth && daySessions.length === 0 ? (
-                  <span className={TYPE.dayEmpty}>–</span>
+                  <span className={`mt-1.5 ${TYPE.dayEmpty}`}>–</span>
                 ) : null}
 
                 {weeklyBadge && (() => {
@@ -581,14 +594,15 @@ export default function CalendarPage() {
 
         {/* Detail panel */}
         {selection && detailData && (
-          <div className="mt-6 bg-gray-800 rounded-2xl overflow-hidden">
+          <div className={`mt-6 bg-gray-800 ${RADIUS.card} overflow-hidden`}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
               <h3 className="font-semibold text-sm">
                 {selection.type === "day" ? selection.date : detailData.label}
               </h3>
               <button
                 onClick={() => setSelection(null)}
-                className="text-gray-500 hover:text-white text-lg leading-none px-1"
+                aria-label={t("common.close")}
+                className={`-mr-2 w-8 h-8 flex items-center justify-center ${RADIUS.chip} text-gray-500 hover:text-white hover:bg-gray-700 transition-colors text-lg leading-none`}
               >
                 ×
               </button>
@@ -616,10 +630,10 @@ export default function CalendarPage() {
                     return (
                       <div key={job.id}>
                         {showJobHeader && (
-                          <div className="flex justify-between items-center px-4 py-2 bg-gray-750 border-b border-gray-700/50">
+                          <div className="flex justify-between items-center px-4 py-2 bg-gray-800/60 border-b border-gray-700/50">
                             <span className="text-xs font-medium text-gray-300">{job.name}</span>
                             {isPeriodView && groupHasIncome && (
-                              <span className="text-xs text-green-400">{t("cal.subtotal", { amount: groupTotal.toFixed(2) })}</span>
+                              <span className="text-xs text-emerald-400">{t("cal.subtotal", { amount: groupTotal.toFixed(2) })}</span>
                             )}
                           </div>
                         )}
@@ -627,7 +641,7 @@ export default function CalendarPage() {
                           .sort((a, b) => new Date(a.clockIn).getTime() - new Date(b.clockIn).getTime())
                           .map((s) => {
                             const amount = amountOf(s);
-                            const duration = effectiveWorkMs(s) ?? 0;
+                            const duration = totalWorkMs(s) ?? 0;
 
                             return (
                               <div key={s.id} className="px-4 py-3 border-b border-gray-700/40 last:border-0">
@@ -639,7 +653,7 @@ export default function CalendarPage() {
                                   </span>
                                   <span className="font-mono text-gray-300 text-sm text-right">{formatDuration(duration)}</span>
                                   <span className="text-gray-400 text-sm">{fmtDateWeekday(s.clockIn)}</span>
-                                  <span className="text-sm font-semibold text-green-400 text-right">
+                                  <span className="text-sm font-semibold text-emerald-400 text-right">
                                     {amount !== null ? `$${amount.toFixed(2)}` : t("cal.commissionLabel")}
                                   </span>
                                 </div>
@@ -664,7 +678,7 @@ export default function CalendarPage() {
                     else if (freqs.has("bi_weekly")) label = t("cal.biweeklyTotal");
                     else label = t("cal.weeklyTotal");
                   }
-                  const totalHoursMs = detailData.sessions.reduce((sum, s) => sum + (effectiveWorkMs(s) ?? 0), 0);
+                  const totalHoursMs = detailData.sessions.reduce((sum, s) => sum + (totalWorkMs(s) ?? 0), 0);
                   return (
                     <div className="px-4 py-3 border-t border-gray-700 bg-gray-900/40">
                       <div className="flex justify-between items-center">
@@ -676,7 +690,7 @@ export default function CalendarPage() {
                           {isPeriod && (
                             <div className="text-xs text-gray-400">{t("cal.hoursTotal", { hours: formatHoursMinutes(totalHoursMs) })}</div>
                           )}
-                          <div className="text-base font-bold text-green-400">${total.toFixed(2)}</div>
+                          <div className="text-base font-bold text-emerald-400">${total.toFixed(2)}</div>
                         </div>
                       </div>
                     </div>
