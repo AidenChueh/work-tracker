@@ -7,6 +7,7 @@ import { useLocale } from "@/hooks/useLocale";
 import { useIncomeMode, type IncomeMode } from "@/hooks/useIncomeMode";
 import { calcSessionIncome, calcSessionGross, totalWorkMs } from "@/lib/income";
 import { formatDuration, formatHoursMinutes, fmtTime, fmtDateWeekday, fmtMonthDay } from "@/lib/format";
+import { StatField } from "@/components/StatField";
 import { getCached, hasCached, setCached } from "@/lib/api-cache";
 import { INCOME, PERIOD, RADIUS, SPACE, SURFACE, TYPE, money, type PeriodKind } from "@/lib/theme";
 import type { Job, WorkSession } from "@/types/api";
@@ -75,15 +76,6 @@ function isBiweeklyPayday(cellDate: Date, job: Job): boolean {
   if (cellStart.getTime() < anchor.getTime()) return false;
   const days = Math.round((cellStart.getTime() - anchor.getTime()) / 86400000);
   return days % 14 === 0;
-}
-
-function StatField({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0">
-      <div className={TYPE.statLabel}>{label}</div>
-      <div className={`${SPACE.stat} ${TYPE.statValue} truncate`}>{value}</div>
-    </div>
-  );
 }
 
 type BadgeCellProps = {
