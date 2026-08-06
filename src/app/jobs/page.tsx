@@ -182,7 +182,7 @@ export default function JobsPage() {
                     setEditingJobId(isEditing ? null : job.id);
                     setShowAddJob(false);
                   }}
-                  className={`w-full text-left ${SURFACE.card} ${RADIUS.card} ${SPACE.card} hover:bg-gray-800/60 active:scale-[0.98] transition-all duration-150`}
+                  className={`w-full text-left ${SURFACE.card} ${RADIUS.card} ${SPACE.card} hover:bg-gray-800/60 hover:shadow-xl hover:shadow-black/30 active:scale-[0.98] transition-all duration-150`}
                 >
                   <div className="flex items-center gap-2">
                     <p className="font-medium truncate">{job.name}</p>
@@ -199,9 +199,8 @@ export default function JobsPage() {
                     </svg>
                   </div>
 
-                  <p className="mt-1 text-[13px] leading-5 text-gray-400 truncate">
-                    {payInfo} · {t(`jobs.freq.${job.payFrequency}`)}
-                    {payDayLabel && ` · ${payDayLabel}`}
+                  <p className="mt-0.5 text-[15px] font-semibold leading-5 text-gray-100 tabular-nums truncate">
+                    {payInfo}
                   </p>
 
                   <div className={`mt-3 pt-3 grid grid-cols-3 gap-3 ${SURFACE.divider}`}>
@@ -217,8 +216,19 @@ export default function JobsPage() {
                     <StatField
                       label={t("jobs.stat.nextPay")}
                       value={nextPayday ? fmtMonthDay(nextPayday) : "—"}
+                      icon={
+                        <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                          <rect x="3" y="5" width="18" height="16" rx="2" />
+                          <path strokeLinecap="round" d="M3 9h18M8 3v4M16 3v4" />
+                        </svg>
+                      }
                     />
                   </div>
+
+                  <p className={`mt-3 ${TYPE.statLabel} truncate`}>
+                    {t(`jobs.freq.${job.payFrequency}`)}
+                    {payDayLabel && ` · ${payDayLabel}`}
+                  </p>
                 </button>
 
                 {isEditing && (

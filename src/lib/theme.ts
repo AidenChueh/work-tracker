@@ -46,6 +46,34 @@ export const TYPE = {
   legend: "text-[11px] leading-4 text-gray-400",
 } as const;
 
+// 新增工作與編輯工作共用同一組 token，兩邊 UI 必須完全一致
+export const FORM = {
+  card: "bg-gray-800 border border-gray-700 rounded-2xl p-4",
+  title: "text-[15px] font-semibold leading-5",
+  sectionTitle: "text-[13px] font-semibold leading-5 text-gray-200",
+  label: "text-[13px] font-medium leading-5 text-gray-400",
+  input:
+    "block w-full max-w-full min-w-0 h-11 bg-gray-700 border border-gray-600 rounded-xl px-3.5 text-[15px] text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500",
+  inputSm:
+    "block w-full max-w-full min-w-0 h-9 bg-gray-700 border border-gray-600 rounded-lg px-3 text-[13px] text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500",
+  inputError: "ring-2 ring-red-500 border-red-500",
+  helper: "text-[11px] leading-4 text-gray-500",
+  error: "text-[11px] leading-4 text-red-400",
+  segment: "flex-1 h-9 rounded-lg text-[13px] font-medium transition-colors",
+  segmentOn: "bg-blue-600 text-white",
+  segmentOff: "bg-gray-700 text-gray-300 hover:bg-gray-600",
+  btnPrimary:
+    "h-11 rounded-xl bg-blue-600 text-white text-[15px] font-semibold hover:bg-blue-700 active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100 transition-all duration-150",
+  btnSecondary:
+    "h-11 rounded-xl bg-gray-700 text-gray-300 text-[15px] font-medium hover:bg-gray-600 active:scale-[0.98] disabled:opacity-50 transition-all duration-150",
+  btnDanger:
+    "h-11 rounded-xl border border-red-500/30 bg-red-500/10 text-red-300 text-[13px] font-medium hover:bg-red-500/20 active:scale-[0.98] disabled:opacity-50 transition-all duration-150",
+  dangerLabel: "text-[11px] font-semibold leading-4 tracking-wide text-red-400/70 uppercase",
+  fieldGap: "space-y-4",
+  labelGap: "mb-1.5",
+  btnRow: "flex gap-3",
+} as const;
+
 export const INCOME = {
   dot: "bg-emerald-400",
   pill: "bg-emerald-500/15 text-emerald-300",
