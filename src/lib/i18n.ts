@@ -18,6 +18,7 @@ const zh: Dict = {
   "common.optional": "（選填）",
   "common.confirm": "確定",
   "common.notes": "備註",
+  "common.minutes": "分鐘",
   "common.notesPlaceholder": "選填，記點什麼…",
   "common.clockIn": "上班時間",
   "common.clockOut": "下班時間",
@@ -187,8 +188,12 @@ const zh: Dict = {
   "records.deleteConfirm": "確定要刪除這筆紀錄嗎？",
   "records.preTax": "稅前 ${amount}",
   "records.timeError": "下班時間必須晚於上班時間",
-  "records.breakMinutes": "休息時間（分鐘）",
+  "records.breakMinutes": "休息時間",
   "records.breakHint": "留空 = 用工作預設 {min} 分",
+  "records.usePreset": "套用預設班表",
+  "records.estHours": "工時",
+  "records.estIncome": "預估收入",
+  "records.datePlaceholder": "選擇日期",
 
   // calendar
   "cal.summary.title": "本月收入",
@@ -255,6 +260,7 @@ const en: Dict = {
   "common.optional": "(optional)",
   "common.confirm": "OK",
   "common.notes": "Notes",
+  "common.minutes": "min",
   "common.notesPlaceholder": "Optional note…",
   "common.clockIn": "Clock In",
   "common.clockOut": "Clock Out",
@@ -424,8 +430,12 @@ const en: Dict = {
   "records.deleteConfirm": "Delete this record?",
   "records.preTax": "Pre-tax ${amount}",
   "records.timeError": "End time must be after start time",
-  "records.breakMinutes": "Break (minutes)",
+  "records.breakMinutes": "Break",
   "records.breakHint": "Empty = job default {min} min",
+  "records.usePreset": "Use default shift",
+  "records.estHours": "Hours",
+  "records.estIncome": "Estimated pay",
+  "records.datePlaceholder": "Pick a date",
 
   // calendar
   "cal.summary.title": "This Month",

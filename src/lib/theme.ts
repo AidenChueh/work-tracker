@@ -66,8 +66,12 @@ export const FORM = {
     "block w-full max-w-full min-w-0 h-9 bg-gray-700 border border-gray-600 rounded-lg px-3 text-[13px] text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500",
   textarea:
     "block w-full max-w-full min-w-0 bg-gray-700 border border-gray-600 rounded-xl px-3.5 py-2.5 text-[15px] leading-5 text-white placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500",
+  // 原生 date/time input 的顯示外殼：真正的 input 疊在上面（透明），外殼只負責樣式
+  inputShell:
+    "flex items-center justify-between gap-2 w-full max-w-full min-w-0 h-11 bg-gray-700 border border-gray-600 rounded-xl px-3.5 text-[15px] text-white",
   inputError: "ring-2 ring-red-500 border-red-500",
   helper: "text-[11px] leading-4 text-gray-500",
+  panel: "bg-gray-700/40 border border-gray-600 rounded-xl px-3.5 py-3",
   error: "text-[11px] leading-4 text-red-400",
   segment: "flex-1 h-9 rounded-lg text-[13px] font-medium transition-colors",
   segmentOn: "bg-blue-600 text-white",

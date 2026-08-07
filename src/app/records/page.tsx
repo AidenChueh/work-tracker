@@ -271,12 +271,24 @@ export default function RecordsPage() {
 
         <div className={`flex items-center justify-between gap-3 ${SPACE.afterHeader}`}>
           <h1 className={TYPE.pageTitle}>{t("records.title")}</h1>
-          <button
-            onClick={() => (showAddForm ? setEditor(null) : openAdd())}
-            className={`shrink-0 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white ${TYPE.control} px-3.5 py-1.5 ${RADIUS.chip} transition-all duration-150`}
-          >
-            {showAddForm ? t("common.cancel") : t("records.addBtn")}
-          </button>
+          {showAddForm ? (
+            <button
+              onClick={() => setEditor(null)}
+              aria-label={t("common.close")}
+              className={`shrink-0 -mr-2 w-11 h-11 flex items-center justify-center ${RADIUS.cell} ${SURFACE.navBtn} text-gray-400 hover:text-white transition-all duration-150`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              onClick={openAdd}
+              className={`shrink-0 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white ${TYPE.control} px-3.5 py-1.5 ${RADIUS.chip} transition-all duration-150`}
+            >
+              {t("records.addBtn")}
+            </button>
+          )}
         </div>
 
         {showAddForm && (

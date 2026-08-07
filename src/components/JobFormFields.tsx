@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocale } from "@/hooks/useLocale";
 import { FORM } from "@/lib/theme";
-import { FormSection, SegmentedControl, SelectField, TextField, ToggleRow } from "./FormControls";
+import { FormSection, SegmentedControl, SelectField, TextField, TimeField, ToggleRow } from "./FormControls";
 import type { Job } from "@/types/api";
 
 type Tier = { afterHours: string; rate: string };
@@ -254,16 +254,16 @@ export function JobFormFields({ form }: { form: JobForm }) {
         />
         {state.scheduleType === "fixed" && (
           <div className="grid grid-cols-2 gap-3">
-            <TextField
+            <TimeField
               label={t("form.fixedClockIn")}
-              type="time"
               value={state.fixedClockIn}
+              placeholder="--:--"
               onChange={(e) => set("fixedClockIn", e.target.value)}
             />
-            <TextField
+            <TimeField
               label={t("form.fixedClockOut")}
-              type="time"
               value={state.fixedClockOut}
+              placeholder="--:--"
               onChange={(e) => set("fixedClockOut", e.target.value)}
             />
           </div>

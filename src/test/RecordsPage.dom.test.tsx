@@ -81,7 +81,7 @@ describe("RecordsPage — 編輯紀錄休息欄位", () => {
     setFetch([job], [makeSession(job)]);
     render(<RecordsPage />);
     await openEditForm();
-    expect(screen.getByText("休息時間（分鐘）")).toBeInTheDocument();
+    expect(screen.getByText("休息時間")).toBeInTheDocument();
   });
 
   it("抽成制工作的紀錄，編輯時不顯示休息欄位、改顯示業績欄位", async () => {
@@ -89,7 +89,7 @@ describe("RecordsPage — 編輯紀錄休息欄位", () => {
     setFetch([job], [makeSession(job, { dailyRevenue: 500 })]);
     render(<RecordsPage />);
     await openEditForm();
-    expect(screen.queryByText("休息時間（分鐘）")).not.toBeInTheDocument();
+    expect(screen.queryByText("休息時間")).not.toBeInTheDocument();
     expect(screen.getByText(/今日業績/)).toBeInTheDocument();
   });
 });

@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode, type InputHTMLAttributes, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { FORM } from "@/lib/theme";
+import { fmtInputDate } from "@/lib/format";
 
 export function Spinner() {
   return (
@@ -66,24 +67,103 @@ type TextFieldProps = InputHTMLAttributes<HTMLInputElement> & {
   hint?: string;
   small?: boolean;
   prefix?: string;
+  suffix?: string;
 };
 
-export function TextField({ label, required, error, hint, small, prefix, className, ...props }: TextFieldProps) {
+export function TextField({ label, required, error, hint, small, prefix, suffix, className, ...props }: TextFieldProps) {
   const input = (
     <input
       {...props}
-      className={`${small ? FORM.inputSm : FORM.input} ${prefix ? "pl-8" : ""} ${error ? FORM.inputError : ""} ${className ?? ""}`}
+      className={`${small ? FORM.inputSm : FORM.input} ${prefix ? "pl-8" : ""} ${suffix ? "pr-14" : ""} ${error ? FORM.inputError : ""} ${className ?? ""}`}
     />
   );
   return (
     <FieldShell label={label} required={required} error={error} hint={hint}>
-      {prefix ? (
+      {prefix || suffix ? (
         <div className="relative">
-          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[15px] text-gray-400 pointer-events-none">{prefix}</span>
+          {prefix && (
+            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[15px] text-gray-400 pointer-events-none">{prefix}</span>
+          )}
           {input}
+          {suffix && (
+            <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[13px] text-gray-400 pointer-events-none">{suffix}</span>
+          )}
         </div>
       ) : input}
     </FieldShell>
+  );
+}
+
+function openPicker(el: HTMLInputElement) {
+  try {
+    (el as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+  } catch {
+    // 瀏覽器不支援或非使用者操作時忽略，仍可用原生輸入
+  }
+}
+
+type PickerFieldProps = InputHTMLAttributes<HTMLInputElement> & {
+  label?: string;
+  required?: boolean;
+  error?: string;
+  hint?: string;
+  display: string;
+  placeholder?: string;
+  icon: ReactNode;
+};
+
+function PickerField({ label, required, error, hint, display, placeholder, icon, className, ...props }: PickerFieldProps) {
+  return (
+    <FieldShell label={label} required={required} error={error} hint={hint}>
+      <div className="relative h-11">
+        <input
+          {...props}
+          required={required}
+          onClick={(e) => openPicker(e.currentTarget)}
+          className={`peer absolute inset-0 w-full h-full opacity-0 cursor-pointer ${className ?? ""}`}
+        />
+        <div
+          className={`${FORM.inputShell} absolute inset-0 pointer-events-none peer-focus:ring-2 peer-focus:ring-blue-500 peer-focus:border-blue-500 ${error ? FORM.inputError : ""}`}
+        >
+          <span className={`truncate ${display ? "" : "text-gray-400"}`}>{display || placeholder}</span>
+          <span className="shrink-0 text-gray-400">{icon}</span>
+        </div>
+      </div>
+    </FieldShell>
+  );
+}
+
+export function DateField({ value, ...props }: Omit<PickerFieldProps, "display" | "icon"> & { value: string }) {
+  return (
+    <PickerField
+      {...props}
+      type="date"
+      value={value}
+      display={fmtInputDate(value)}
+      icon={
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+          <rect x="3" y="5" width="18" height="16" rx="2" />
+          <path strokeLinecap="round" d="M3 9h18M8 3v4M16 3v4" />
+        </svg>
+      }
+    />
+  );
+}
+
+export function TimeField({ value, ...props }: Omit<PickerFieldProps, "display" | "icon"> & { value: string }) {
+  return (
+    <PickerField
+      {...props}
+      type="time"
+      value={value}
+      display={value}
+      icon={
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="9" />
+          <path strokeLinecap="round" d="M12 7v5l3 2" />
+        </svg>
+      }
+    />
   );
 }
 

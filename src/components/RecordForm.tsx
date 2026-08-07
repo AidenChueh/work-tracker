@@ -1,10 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useLocale } from "@/hooks/useLocale";
-import { TextField, TextAreaField, SelectField, Spinner } from "./FormControls";
-import { payRules } from "@/lib/income";
-import { FORM } from "@/lib/theme";
+import { useTaxRate } from "@/hooks/useTaxRate";
+import { useIncomeMode } from "@/hooks/useIncomeMode";
+import { TextField, TextAreaField, SelectField, DateField, TimeField, Spinner } from "./FormControls";
+import { payRules, calcSessionGross, calcSessionIncome, totalWorkMs, type SessionBase } from "@/lib/income";
+import { formatHoursMinutes } from "@/lib/format";
+import { FORM, TYPE } from "@/lib/theme";
 import type { Job, WorkSession } from "@/types/api";
 
 export type RecordDraft = {
@@ -46,6 +49,22 @@ export function draftFromSession(s: WorkSession): RecordDraft {
   };
 }
 
+// 下班早於上班視為跨夜班，落在隔天
+function resolveRange(draft: RecordDraft): { clockIn: Date; clockOut: Date } | null {
+  if (!draft.date || !draft.start || !draft.end) return null;
+  const clockIn = new Date(`${draft.date}T${draft.start}`);
+  const clockOut = new Date(`${draft.date}T${draft.end}`);
+  if (isNaN(clockIn.getTime()) || isNaN(clockOut.getTime())) return null;
+  if (clockOut < clockIn) clockOut.setDate(clockOut.getDate() + 1);
+  if (clockOut <= clockIn) return null;
+  return { clockIn, clockOut };
+}
+
+function parseBreakMinutes(value: string): number | null {
+  const n = parseInt(value);
+  return value.trim() === "" || isNaN(n) ? null : Math.max(0, n);
+}
+
 export function RecordForm({ mode, jobs, session, initial, deviceId, onSaved, onCancel }: {
   mode: "add" | "edit";
   jobs: Job[];
@@ -56,16 +75,29 @@ export function RecordForm({ mode, jobs, session, initial, deviceId, onSaved, on
   onCancel: () => void;
 }) {
   const { t } = useLocale();
+  const taxRate = useTaxRate();
+  const [incomeMode] = useIncomeMode();
   const [draft, setDraft] = useState<RecordDraft>(initial);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(initial.notes !== "");
   const lastJobId = useRef(initial.jobId);
 
   const job = jobs.find((j) => j.id === draft.jobId);
   const isCommission = job?.commissionPercentage != null;
   const breakDefault = (session ? payRules(session).breakDuration : job?.breakDuration) ?? 0;
+  const hasPreset = !!(job?.fixedClockIn && job?.fixedClockOut);
 
   const set = (patch: Partial<RecordDraft>) => setDraft((d) => ({ ...d, ...patch }));
+
+  function applyPreset() {
+    if (!job?.fixedClockIn || !job.fixedClockOut) return;
+    set({
+      start: job.fixedClockIn,
+      end: job.fixedClockOut,
+      breakMinutes: job.breakDuration != null ? String(job.breakDuration) : draft.breakMinutes,
+    });
+  }
 
   useEffect(() => {
     if (mode !== "add" || !job) return;
@@ -77,15 +109,36 @@ export function RecordForm({ mode, jobs, session, initial, deviceId, onSaved, on
     );
   }, [mode, job]);
 
+  const preview = useMemo(() => {
+    const range = resolveRange(draft);
+    if (!range || !job) return null;
+    const pseudo: SessionBase = {
+      clockIn: range.clockIn.toISOString(),
+      clockOut: range.clockOut.toISOString(),
+      job,
+      payRulesSnapshot: session?.payRulesSnapshot ?? null,
+      breakMinutes: parseBreakMinutes(draft.breakMinutes),
+      breaks: [],
+      isPublicHoliday: session?.isPublicHoliday ?? false,
+      dailyRevenue: draft.dailyRevenue === "" ? null : parseFloat(draft.dailyRevenue),
+    };
+    const amount = incomeMode === "net" ? calcSessionIncome(pseudo, taxRate) : calcSessionGross(pseudo);
+    return { workMs: totalWorkMs(pseudo) ?? 0, amount };
+  }, [draft, job, session, incomeMode, taxRate]);
+
+  const canSubmit =
+    !!draft.jobId &&
+    !!draft.date &&
+    !!draft.start &&
+    !!draft.end &&
+    (!isCommission || !job?.commissionRequired || draft.dailyRevenue !== "");
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!draft.jobId || !draft.date || !draft.start || !draft.end) return;
+    if (!canSubmit) return;
 
-    const clockIn = new Date(`${draft.date}T${draft.start}`);
-    const clockOut = new Date(`${draft.date}T${draft.end}`);
-    // 下班早於上班視為跨夜班，落在隔天
-    if (clockOut < clockIn) clockOut.setDate(clockOut.getDate() + 1);
-    if (clockOut <= clockIn) {
+    const range = resolveRange(draft);
+    if (!range) {
       setError(t("records.timeError"));
       return;
     }
@@ -94,15 +147,14 @@ export function RecordForm({ mode, jobs, session, initial, deviceId, onSaved, on
     setSubmitting(true);
 
     const body: Record<string, unknown> = {
-      clockIn: clockIn.toISOString(),
-      clockOut: clockOut.toISOString(),
+      clockIn: range.clockIn.toISOString(),
+      clockOut: range.clockOut.toISOString(),
       notes: draft.notes.trim() === "" ? null : draft.notes.trim(),
     };
     if (isCommission) {
       body.dailyRevenue = draft.dailyRevenue === "" ? null : parseFloat(draft.dailyRevenue);
     } else {
-      const bm = parseInt(draft.breakMinutes);
-      body.breakMinutes = draft.breakMinutes.trim() === "" || isNaN(bm) ? null : Math.max(0, bm);
+      body.breakMinutes = parseBreakMinutes(draft.breakMinutes);
     }
 
     const headers = { "Content-Type": "application/json", "x-device-id": deviceId };
@@ -141,29 +193,40 @@ export function RecordForm({ mode, jobs, session, initial, deviceId, onSaved, on
         }
       />
 
-      <TextField
-        type="date"
+      <DateField
         label={t("records.date")}
         value={draft.date}
+        placeholder={t("records.datePlaceholder")}
         onChange={(e) => set({ date: e.target.value })}
         required
       />
 
-      <div className="grid grid-cols-2 gap-3">
-        <TextField
-          type="time"
-          label={t("records.startTime")}
-          value={draft.start}
-          onChange={(e) => set({ start: e.target.value })}
-          required
-        />
-        <TextField
-          type="time"
-          label={t("records.endTime")}
-          value={draft.end}
-          onChange={(e) => set({ end: e.target.value })}
-          required
-        />
+      <div>
+        <div className="grid grid-cols-2 gap-3">
+          <TimeField
+            label={t("records.startTime")}
+            value={draft.start}
+            placeholder="--:--"
+            onChange={(e) => set({ start: e.target.value })}
+            required
+          />
+          <TimeField
+            label={t("records.endTime")}
+            value={draft.end}
+            placeholder="--:--"
+            onChange={(e) => set({ end: e.target.value })}
+            required
+          />
+        </div>
+        {hasPreset && (
+          <button
+            type="button"
+            onClick={applyPreset}
+            className={`mt-2 px-2.5 py-1 rounded-lg bg-gray-700 text-gray-300 ${TYPE.rowMeta} hover:bg-gray-600 active:scale-[0.98] transition-all duration-150`}
+          >
+            {t("records.usePreset")}
+          </button>
+        )}
       </div>
 
       {isCommission ? (
@@ -184,6 +247,7 @@ export function RecordForm({ mode, jobs, session, initial, deviceId, onSaved, on
           type="number"
           label={t("records.breakMinutes")}
           hint={t("records.breakHint", { min: breakDefault })}
+          suffix={t("common.minutes")}
           value={draft.breakMinutes}
           onChange={(e) => set({ breakMinutes: e.target.value })}
           onFocus={(e) => e.target.select()}
@@ -197,9 +261,29 @@ export function RecordForm({ mode, jobs, session, initial, deviceId, onSaved, on
         label={t("common.notes")}
         value={draft.notes}
         onChange={(e) => set({ notes: e.target.value })}
+        onFocus={() => setNotesOpen(true)}
+        onBlur={() => setNotesOpen(draft.notes !== "")}
         placeholder={t("common.notesPlaceholder")}
-        rows={2}
+        rows={notesOpen ? 3 : 1}
       />
+
+      {preview && (
+        <div className={FORM.panel}>
+          <div className="flex items-center justify-between gap-3">
+            <span className={FORM.label}>{t("records.estHours")}</span>
+            <span className={`${TYPE.cardSubValue} text-gray-100`}>{formatHoursMinutes(preview.workMs)}</span>
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <span className={FORM.label}>
+              {t("records.estIncome")}
+              <span className="ml-1 text-gray-500">{t(`cal.mode.${incomeMode}`)}</span>
+            </span>
+            <span className={`${TYPE.cardSubValue} text-emerald-400`}>
+              {preview.amount !== null ? `$${preview.amount.toFixed(2)}` : "—"}
+            </span>
+          </div>
+        </div>
+      )}
 
       {error && <p className={FORM.error}>{error}</p>}
 
@@ -209,7 +293,7 @@ export function RecordForm({ mode, jobs, session, initial, deviceId, onSaved, on
         </button>
         <button
           type="submit"
-          disabled={submitting}
+          disabled={submitting || !canSubmit}
           className={`flex-1 ${FORM.btnPrimary} inline-flex items-center justify-center gap-2`}
         >
           {submitting && <Spinner />}

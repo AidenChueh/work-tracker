@@ -32,6 +32,17 @@ export function fmtMonthDay(d: Date): string {
   return getLocale() === "en" ? `${MONTH_SHORT_EN[d.getMonth()]} ${d.getDate()}` : `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
+// "YYYY-MM-DD"（date input 的值）→ 2026/08/07（星期五）
+export function fmtInputDate(value: string): string {
+  const [y, m, d] = value.split("-").map(Number);
+  if (!y || !m || !d) return "";
+  const date = new Date(y, m - 1, d);
+  if (getLocale() === "en") {
+    return `${WD_LONG_EN[date.getDay()].slice(0, 3)}, ${MONTH_SHORT_EN[m - 1]} ${d}, ${y}`;
+  }
+  return `${y}/${String(m).padStart(2, "0")}/${String(d).padStart(2, "0")}（星期${WD_ZH[date.getDay()]}）`;
+}
+
 export function fmtDateWeekday(iso: string): string {
   const d = new Date(iso);
   const md = `${d.getMonth() + 1}/${d.getDate()}`;
