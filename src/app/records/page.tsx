@@ -8,7 +8,7 @@ import { useIncomeMode, type IncomeMode } from "@/hooks/useIncomeMode";
 import { RecordForm, draftFromSession, emptyDraft, type RecordDraft } from "@/components/RecordForm";
 import { calcSessionIncome, calcSessionGross, totalWorkMs } from "@/lib/income";
 import { formatHoursMinutes, fmtTime, fmtDateWeekday } from "@/lib/format";
-import { getCached, hasCached, setCached } from "@/lib/api-cache";
+import { getCached, hasCached, invalidateCache, setCached } from "@/lib/api-cache";
 import { INCOME, PERIOD, RADIUS, SPACE, SURFACE, TYPE, type PeriodKind } from "@/lib/theme";
 import type { Job, WorkSession } from "@/types/api";
 
@@ -219,7 +219,10 @@ export default function RecordsPage() {
   );
 
   async function refresh() {
-    if (deviceId) await fetchSessions(deviceId, filterPeriod);
+    if (!deviceId) return;
+    invalidateCache(`sessions:${deviceId}`);
+    invalidateCache(`jobsMonth:${deviceId}`);
+    await fetchSessions(deviceId, filterPeriod);
   }
 
   function openAdd() {
@@ -246,11 +249,11 @@ export default function RecordsPage() {
       headers: { "x-device-id": deviceId },
     });
     if (res.ok) {
-      setSessions((prev) => {
-        const next = prev.filter((s) => s.id !== id);
-        setCached(`sessions:${deviceId}:${filterPeriod}`, next);
-        return next;
-      });
+      const next = sessions.filter((s) => s.id !== id);
+      invalidateCache(`sessions:${deviceId}`);
+      invalidateCache(`jobsMonth:${deviceId}`);
+      setSessions(next);
+      setCached(`sessions:${deviceId}:${filterPeriod}`, next);
     }
   }
 
@@ -264,6 +267,7 @@ export default function RecordsPage() {
 
   const jobsWithSessions = jobs.filter((j) => grouped.has(j.id));
   const showAddForm = editor?.mode === "add";
+  const menuSession = menuId ? completedSessions.find((s) => s.id === menuId) ?? null : null;
 
   return (
     <main className="bg-gray-950 text-white">
@@ -527,26 +531,6 @@ export default function RecordsPage() {
                                             </svg>
                                           </button>
 
-                                          {menuId === s.id && (
-                                            <>
-                                              <div className="fixed inset-0 z-10" onClick={() => setMenuId(null)} />
-                                              <div className={`absolute top-11 right-1.5 z-20 w-32 overflow-hidden bg-gray-800 border border-gray-700 ${RADIUS.cell} shadow-xl shadow-black/40`}>
-                                                {[
-                                                  { label: t("common.edit"), onClick: () => openEdit(s), tone: "text-gray-200" },
-                                                  { label: t("records.duplicate"), onClick: () => openDuplicate(s), tone: "text-gray-200" },
-                                                  { label: t("common.delete"), onClick: () => handleDelete(s.id), tone: "text-red-400" },
-                                                ].map((item) => (
-                                                  <button
-                                                    key={item.label}
-                                                    onClick={item.onClick}
-                                                    className={`w-full text-left px-3.5 py-2.5 ${TYPE.control} ${item.tone} hover:bg-gray-700 active:bg-gray-600 transition-colors`}
-                                                  >
-                                                    {item.label}
-                                                  </button>
-                                                ))}
-                                              </div>
-                                            </>
-                                          )}
                                         </div>
                                       );
                                     })}
@@ -565,6 +549,45 @@ export default function RecordsPage() {
           </>
         )}
       </div>
+
+      {/* Action sheet 放在頁面根層：選單若留在 Accordion 的 overflow-hidden 內會被裁掉 */}
+      {menuSession && (
+        <div className="fixed inset-0 z-[70] flex items-end" onClick={() => setMenuId(null)}>
+          <div className="absolute inset-0 bg-black/60 animate-fade-in" />
+          <div
+            className="relative w-full max-w-md mx-auto p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] animate-sheet-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className={`overflow-hidden bg-gray-800 border border-gray-700 ${RADIUS.card} shadow-xl shadow-black/40`}>
+              <div className="px-4 py-3 border-b border-gray-700">
+                <p className={TYPE.rowMeta}>
+                  {fmtDateWeekday(menuSession.clockIn)} · {fmtTime(menuSession.clockIn)} –{" "}
+                  {menuSession.clockOut ? fmtTime(menuSession.clockOut) : t("records.inProgress")}
+                </p>
+              </div>
+              {[
+                { label: t("common.edit"), onClick: () => openEdit(menuSession), tone: "text-gray-100" },
+                { label: t("records.duplicate"), onClick: () => openDuplicate(menuSession), tone: "text-gray-100" },
+                { label: t("common.delete"), onClick: () => handleDelete(menuSession.id), tone: "text-red-400" },
+              ].map((item) => (
+                <button
+                  key={item.label}
+                  onClick={item.onClick}
+                  className={`w-full h-12 px-4 text-left border-t border-gray-700 first:border-t-0 text-[15px] font-medium ${item.tone} hover:bg-gray-700 active:bg-gray-600 transition-colors`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setMenuId(null)}
+              className={`mt-2 w-full h-12 bg-gray-800 border border-gray-700 ${RADIUS.card} text-[15px] font-semibold text-gray-300 hover:bg-gray-700 active:scale-[0.98] transition-all duration-150`}
+            >
+              {t("common.cancel")}
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

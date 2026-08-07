@@ -75,6 +75,25 @@ async function openEditForm() {
   fireEvent.click(screen.getByText("編輯"));
 }
 
+describe("RecordsPage — 刪除紀錄", () => {
+  it("⋯ → 刪除 → 確認後送出 DELETE", async () => {
+    const job = makeJob();
+    const session = makeSession(job);
+    setFetch([job], [session]);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(<RecordsPage />);
+    fireEvent.click(await screen.findByLabelText("更多操作"));
+    fireEvent.click(screen.getByText("刪除"));
+
+    expect(confirmSpy).toHaveBeenCalled();
+    const calls = (global.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    const del = calls.find((c) => (c[1] as RequestInit | undefined)?.method === "DELETE");
+    expect(del?.[0]).toBe(`/api/sessions/${session.id}`);
+    confirmSpy.mockRestore();
+  });
+});
+
 describe("RecordsPage — 編輯紀錄休息欄位", () => {
   it("時薪制工作的紀錄，編輯時顯示休息時間欄位", async () => {
     const job = makeJob();

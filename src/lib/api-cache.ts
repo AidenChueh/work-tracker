@@ -13,6 +13,12 @@ export function setCached(key: string, data: unknown): void {
   cache.set(key, data);
 }
 
+export function invalidateCache(prefix: string): void {
+  for (const key of Array.from(cache.keys())) {
+    if (key.startsWith(prefix)) cache.delete(key);
+  }
+}
+
 export function clearCache(): void {
   cache.clear();
 }
