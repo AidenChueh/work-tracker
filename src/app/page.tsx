@@ -370,8 +370,8 @@ export default function Home() {
   }
 
   return (
-    <main className="bg-gray-950 text-white">
-      <div className={`max-w-md mx-auto ${SPACE.page}`}>
+    <main className={`bg-gray-950 text-white ${SPACE.fill}`}>
+      <div className={`w-full max-w-md mx-auto ${SPACE.page} ${SPACE.fillBody}`}>
 
         {/* Header */}
         <PageHeader
@@ -587,7 +587,7 @@ export default function Home() {
                 </button>
                 <button
                   onClick={() => setClockAgain(true)}
-                  className={`mt-2 w-full py-2 ${TYPE.control} text-gray-400 hover:text-white transition-colors`}
+                  className={`mt-1 w-full h-9 ${TYPE.control} text-gray-400 hover:text-white transition-colors`}
                 >
                   {t("home.clockAgain")}
                 </button>
@@ -620,8 +620,8 @@ export default function Home() {
           </>
         )}
 
-        {/* 最近紀錄 */}
-        <div className="mt-8">
+        {/* 最近紀錄：內容不足一屏時由這一區吸收剩餘空間 */}
+        <div className={`${SPACE.section} ${SPACE.fillBody}`}>
           <div className="flex items-center justify-between gap-3 mb-3">
             <h2 className={TYPE.sectionLabel}>{t("home.recent")}</h2>
             {recent.length > 0 && (
@@ -632,6 +632,7 @@ export default function Home() {
           </div>
 
           {recent.length === 0 ? (
+            <div className={SPACE.fillRest}>
             <EmptyState
               compact
               icon={
@@ -643,6 +644,7 @@ export default function Home() {
               title={t("home.empty.title")}
               description={t("home.empty.desc")}
             />
+            </div>
           ) : (
             <div className="space-y-2">
               {recent.map((session) => {

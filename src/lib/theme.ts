@@ -16,6 +16,11 @@ export const SPACE = {
   stat: "mt-1.5",
   cellGap: "gap-y-1.5",
   group: "space-y-5",
+  section: "mt-6",
+  // 內容不足一屏時讓頁面撐滿捲動區，剩餘空間交給有 flex-1 的區塊吸收，避免底部一大片空白
+  fill: "min-h-full flex flex-col",
+  fillBody: "flex-1 flex flex-col",
+  fillRest: "flex-1 flex flex-col justify-center",
 } as const;
 
 export const SURFACE = {

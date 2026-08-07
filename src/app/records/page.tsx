@@ -276,8 +276,8 @@ export default function RecordsPage() {
   const menuSession = menuId ? completedSessions.find((s) => s.id === menuId) ?? null : null;
 
   return (
-    <main className="bg-gray-950 text-white">
-      <div className={`max-w-md mx-auto ${SPACE.page}`}>
+    <main className={`bg-gray-950 text-white ${SPACE.fill}`}>
+      <div className={`w-full max-w-md mx-auto ${SPACE.page} ${SPACE.fillBody}`}>
 
         <PageHeader
           title={t("records.title")}
@@ -373,7 +373,8 @@ export default function RecordsPage() {
             </div>
 
             {jobsWithSessions.length === 0 ? (
-              completedSessions.length === 0 && filterPeriod === "all" && !filterJobId ? (
+              <div className={SPACE.fillRest}>
+              {completedSessions.length === 0 && filterPeriod === "all" && !filterJobId ? (
                 <EmptyState
                   icon={
                     <svg className={ICON.lg} fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
@@ -411,7 +412,8 @@ export default function RecordsPage() {
                     </button>
                   }
                 />
-              )
+              )}
+              </div>
             ) : (
               <div className="space-y-4">
                 {jobsWithSessions.map((job) => {
