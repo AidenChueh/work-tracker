@@ -6,10 +6,11 @@ import { useTaxRate } from "@/hooks/useTaxRate";
 import { useLocale } from "@/hooks/useLocale";
 import { useIncomeMode, type IncomeMode } from "@/hooks/useIncomeMode";
 import { calcSessionIncome, calcSessionGross, totalWorkMs } from "@/lib/income";
-import { formatDuration, formatHoursMinutes, fmtTime, fmtDateWeekday, fmtMonthDay } from "@/lib/format";
+import { formatHoursMinutes, fmtTime, fmtDateWeekday, fmtMonthDay } from "@/lib/format";
 import { StatField } from "@/components/StatField";
 import { getCached, hasCached, setCached } from "@/lib/api-cache";
-import { INCOME, PERIOD, RADIUS, SPACE, SURFACE, TYPE, money, type PeriodKind } from "@/lib/theme";
+import { PageSkeleton } from "@/components/Skeleton";
+import { HIT, ICON, INCOME, PERIOD, RADIUS, SPACE, SURFACE, TYPE, money, type PeriodKind } from "@/lib/theme";
 import type { Job, WorkSession } from "@/types/api";
 
 type SelectionMode =
@@ -368,13 +369,7 @@ export default function CalendarPage() {
 
   const todayStr = localDateStr(new Date());
 
-  if (!loaded || loading) {
-    return (
-      <div className="flex items-center justify-center h-64 bg-gray-950">
-        <div className="text-white">{t("common.loading")}</div>
-      </div>
-    );
-  }
+  if (!loaded || loading) return <PageSkeleton cards={2} lines={6} />;
 
   const monthsEn = ["January","February","March","April","May","June","July","August","September","October","November","December"];
   const monthLabel = locale === "en" ? `${monthsEn[viewMonth]} ${viewYear}` : `${viewYear}年${viewMonth + 1}月`;
@@ -623,20 +618,28 @@ export default function CalendarPage() {
         {selection && detailData && (
           <div className={`mt-6 bg-gray-800 ${RADIUS.card} overflow-hidden`}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
-              <h3 className="font-semibold text-sm">
+              <h3 className={TYPE.rowTitle}>
                 {selection.type === "day" ? selection.date : detailData.label}
               </h3>
               <button
                 onClick={() => setSelection(null)}
                 aria-label={t("common.close")}
-                className={`-mr-2 w-8 h-8 flex items-center justify-center ${RADIUS.chip} text-gray-500 hover:text-white hover:bg-gray-700 transition-colors text-lg leading-none`}
+                className={`-mr-2 ${HIT} ${RADIUS.chip} text-gray-500 hover:text-white hover:bg-gray-700 transition-colors`}
               >
-                ×
+                <svg className={ICON.sm} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
+                </svg>
               </button>
             </div>
 
             {detailData.sessions.length === 0 ? (
-              <p className="text-gray-400 text-sm text-center py-6">{t("cal.empty")}</p>
+              <div className="py-8 text-center">
+                <svg className={`${ICON.lg} mx-auto text-gray-600`} fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                  <rect x="3" y="5" width="18" height="16" rx="2" />
+                  <path strokeLinecap="round" d="M3 9h18M8 3v4M16 3v4" />
+                </svg>
+                <p className={`mt-3 ${TYPE.body} text-gray-500`}>{t("cal.empty")}</p>
+              </div>
             ) : (
               <>
                 {(() => {
@@ -658,9 +661,9 @@ export default function CalendarPage() {
                       <div key={job.id}>
                         {showJobHeader && (
                           <div className="flex justify-between items-center px-4 py-2 bg-gray-800/60 border-b border-gray-700/50">
-                            <span className="text-xs font-medium text-gray-300">{job.name}</span>
+                            <span className={`${TYPE.body} font-medium text-gray-300`}>{job.name}</span>
                             {isPeriodView && groupHasIncome && (
-                              <span className="text-xs text-emerald-400">{t("cal.subtotal", { amount: groupTotal.toFixed(2) })}</span>
+                              <span className={`${TYPE.rowValue} ${INCOME.text}`}>{t("cal.subtotal", { amount: groupTotal.toFixed(2) })}</span>
                             )}
                           </div>
                         )}
@@ -673,14 +676,14 @@ export default function CalendarPage() {
                             return (
                               <div key={s.id} className="px-4 py-3 border-b border-gray-700/40 last:border-0">
                                 <div className="grid grid-cols-2 gap-y-1 items-center">
-                                  <span className="text-sm text-white">
+                                  <span className={`${TYPE.body} text-white`}>
                                     {fmtTime(s.clockIn)}
-                                    {" — "}
+                                    {" – "}
                                     {s.clockOut ? fmtTime(s.clockOut) : t("cal.inProgress")}
                                   </span>
-                                  <span className="font-mono text-gray-300 text-sm text-right">{formatDuration(duration)}</span>
-                                  <span className="text-gray-400 text-sm">{fmtDateWeekday(s.clockIn)}</span>
-                                  <span className="text-sm font-semibold text-emerald-400 text-right">
+                                  <span className={`${TYPE.rowValue} text-gray-300 text-right`}>{formatHoursMinutes(duration)}</span>
+                                  <span className={TYPE.rowMeta}>{fmtDateWeekday(s.clockIn)}</span>
+                                  <span className={`${TYPE.rowValue} ${INCOME.text} text-right`}>
                                     {amount !== null ? `$${amount.toFixed(2)}` : t("cal.commissionLabel")}
                                   </span>
                                 </div>
@@ -709,15 +712,15 @@ export default function CalendarPage() {
                   return (
                     <div className="px-4 py-3 border-t border-gray-700 bg-gray-900/40">
                       <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-400">
+                        <span className={`${TYPE.body} text-gray-400`}>
                           {label}
-                          <span className="ml-1.5 text-xs text-gray-500">{t(`cal.mode.${incomeMode}`)}</span>
+                          <span className={`ml-1.5 ${TYPE.caption} text-gray-500`}>{t(`cal.mode.${incomeMode}`)}</span>
                         </span>
                         <div className="text-right">
                           {isPeriod && (
-                            <div className="text-xs text-gray-400">{t("cal.hoursTotal", { hours: formatHoursMinutes(totalHoursMs) })}</div>
+                            <div className={`${TYPE.caption} text-gray-400`}>{t("cal.hoursTotal", { hours: formatHoursMinutes(totalHoursMs) })}</div>
                           )}
-                          <div className="text-base font-bold text-emerald-400">${total.toFixed(2)}</div>
+                          <div className={`${TYPE.cardSubValue} ${INCOME.text}`}>${total.toFixed(2)}</div>
                         </div>
                       </div>
                     </div>

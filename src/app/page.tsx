@@ -11,7 +11,13 @@ import { getCached, hasCached, invalidateCache, setCached } from "@/lib/api-cach
 import { SettingsModal } from "@/components/SettingsModal";
 import { StatField } from "@/components/StatField";
 import { SelectField, TextField, TextAreaField, TimeField, ToggleRow, Spinner } from "@/components/FormControls";
-import { FORM, RADIUS, SPACE, SURFACE, TYPE } from "@/lib/theme";
+import { PageHeader } from "@/components/PageHeader";
+import { PageSkeleton } from "@/components/Skeleton";
+import { EmptyState } from "@/components/EmptyState";
+import { useToast } from "@/components/Toast";
+import { getNextPayday } from "@/lib/payday";
+import { fmtMonthDay } from "@/lib/format";
+import { COLOR, FORM, HIT, ICON, RADIUS, SPACE, SURFACE, TYPE } from "@/lib/theme";
 import type { Job, WorkSession } from "@/types/api";
 
 function dateWithTime(base: Date, time: string): Date {
@@ -23,6 +29,20 @@ function dateWithTime(base: Date, time: string): Date {
 
 function localDateStr(d: Date): string {
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
+// 本週從星期一算起
+function startOfWeek(): Date {
+  const d = new Date();
+  const dow = d.getDay();
+  d.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function startOfMonth(): Date {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), 1);
 }
 
 function money(n: number): string {
@@ -58,6 +78,7 @@ const STATUS_STYLE: Record<TodayStatus, string> = {
 export default function Home() {
   const { deviceId, loaded } = useDevice();
   const { t } = useLocale();
+  const toast = useToast();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string>("");
   const [activeSession, setActiveSession] = useState<WorkSession | null>(null);
@@ -97,7 +118,8 @@ export default function Home() {
   }, []);
 
   const fetchRecentSessions = useCallback(async (id: string) => {
-    const res = await fetch("/api/sessions?limit=20", { headers: { "x-device-id": id } });
+    // 一次抓夠：今日／本週／本月統計與最近紀錄都從這份資料算
+    const res = await fetch("/api/sessions?limit=120", { headers: { "x-device-id": id } });
     if (res.ok) {
       const data: WorkSession[] = await res.json();
       setSessions(data);
@@ -151,6 +173,21 @@ export default function Home() {
     () => sessions.filter((s) => s.id !== activeSession?.id).slice(0, 2),
     [sessions, activeSession]
   );
+
+  const periodIncome = useMemo(() => {
+    const weekStart = startOfWeek().getTime();
+    const monthStart = startOfMonth().getTime();
+    let week = 0;
+    let month = 0;
+    for (const s of sessions) {
+      if (s.clockOut === null) continue;
+      const time = new Date(s.clockIn).getTime();
+      const amount = calcSessionIncome(s, taxRate) ?? 0;
+      if (time >= weekStart) week += amount;
+      if (time >= monthStart) month += amount;
+    }
+    return { week, month };
+  }, [sessions, taxRate]);
 
   // 上班中的即時工時／收入：每秒隨 elapsed 重算
   const live = useMemo(() => {
@@ -206,9 +243,11 @@ export default function Home() {
       setElapsed(0);
       setClockAgain(false);
       invalidateShared();
+      toast(t("toast.clockedIn"));
     } else {
       const data = await res.json().catch(() => ({}));
       setClockError(data.error ?? t("home.clockFailed"));
+      toast(t("toast.failed"), "error");
     }
     setSubmitting(false);
   };
@@ -237,9 +276,11 @@ export default function Home() {
       setClockAgain(false);
       invalidateShared();
       fetchRecentSessions(deviceId).catch(() => {});
+      toast(t("toast.clockedOut"));
     } else {
       const data = await res.json().catch(() => ({}));
       setClockError(data.error ?? t("home.clockFailed"));
+      toast(t("toast.failed"), "error");
     }
     setSubmitting(false);
   };
@@ -275,8 +316,10 @@ export default function Home() {
       setClockAgain(false);
       invalidateShared();
       await fetchRecentSessions(deviceId);
+      toast(t("toast.recordAdded"));
     } else {
       setFixedFeedback(t("home.addFailed"));
+      toast(t("toast.failed"), "error");
     }
     setSubmittingFixed(false);
   };
@@ -288,14 +331,7 @@ export default function Home() {
   }
 
   if (!loaded) return null;
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full bg-gray-950">
-        <div className="text-white">{t("common.loading")}</div>
-      </div>
-    );
-  }
+  if (loading) return <PageSkeleton cards={2} lines={4} />;
 
   const isCommissionJob = activeSession?.job.commissionPercentage != null;
   const fixedIsCommission = selectedJob?.commissionPercentage != null;
@@ -308,6 +344,7 @@ export default function Home() {
     (activeSession && activeSession.job.penaltyRatesEnabled) ||
     (!activeSession && isFixedSchedule && selectedJob?.penaltyRatesEnabled);
   const doneForToday = status === "done" && !clockAgain;
+  const nextPayday = (activeSession?.job ?? selectedJob) ? getNextPayday((activeSession?.job ?? selectedJob)!) : null;
 
   const summaryStats: { label: string; value: string; tone?: string }[] = [
     {
@@ -337,23 +374,23 @@ export default function Home() {
       <div className={`max-w-md mx-auto ${SPACE.page}`}>
 
         {/* Header */}
-        <div className={`flex items-start justify-between gap-2 ${SPACE.afterHeader}`}>
-          <div className="min-w-0">
-            <h1 className={`${TYPE.pageTitle} truncate`}>Work Tracker</h1>
-            <p className={`mt-0.5 ${TYPE.rowMeta}`}>{formatTodayLabel()}</p>
-          </div>
+        <PageHeader
+          title="Work Tracker"
+          subtitle={formatTodayLabel()}
+          action={
           <button
             type="button"
             onClick={() => setShowSettings(true)}
-            className={`shrink-0 -mr-2 w-11 h-11 flex items-center justify-center ${RADIUS.cell} ${SURFACE.navBtn} text-gray-400 hover:text-white transition-all duration-150`}
+            className={`-mr-2 ${HIT} ${RADIUS.cell} ${SURFACE.navBtn} text-gray-400 hover:text-white transition-all duration-150`}
             aria-label={t("settings.title")}
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+            <svg className={ICON.md} fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
           </button>
-        </div>
+          }
+        />
         {showSettings && deviceId && (
           <SettingsModal deviceId={deviceId} onClose={() => setShowSettings(false)} />
         )}
@@ -388,19 +425,51 @@ export default function Home() {
               <StatField key={s.label} size="md" label={s.label} value={s.value} tone={s.tone} />
             ))}
           </div>
+
+          <div className={`mt-4 pt-4 grid grid-cols-3 gap-3 ${SURFACE.divider}`}>
+            <StatField
+              label={t("home.weekIncome")}
+              value={periodIncome.week > 0 ? money(periodIncome.week) : "—"}
+              tone={COLOR.success}
+            />
+            <StatField
+              label={t("home.monthIncome")}
+              value={periodIncome.month > 0 ? money(periodIncome.month) : "—"}
+              tone={COLOR.success}
+            />
+            <StatField
+              label={t("jobs.stat.nextPay")}
+              value={nextPayday ? fmtMonthDay(nextPayday) : "—"}
+              icon={
+                <svg className={ICON.xs} fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                  <rect x="3" y="5" width="18" height="16" rx="2" />
+                  <path strokeLinecap="round" d="M3 9h18M8 3v4M16 3v4" />
+                </svg>
+              }
+            />
+          </div>
         </div>
 
         {/* 打卡 */}
         {jobs.length === 0 && !activeSession ? (
-          <div className={`${SURFACE.card} ${RADIUS.card} px-6 py-10 text-center`}>
-            <p className="text-[15px] font-semibold">{t("home.noJobs")}</p>
-            <Link
-              href="/jobs"
-              className={`mt-4 inline-block bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white ${TYPE.control} px-4 py-2 ${RADIUS.chip} transition-all duration-150`}
-            >
-              {t("home.goToJobs")}
-            </Link>
-          </div>
+          <EmptyState
+            icon={
+              <svg className={ICON.lg} fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                <rect x="2" y="7" width="20" height="14" rx="2" />
+                <path strokeLinecap="round" d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+              </svg>
+            }
+            title={t("home.noJobs")}
+            description={t("jobs.empty.desc")}
+            action={
+              <Link
+                href="/jobs"
+                className={`inline-block ${COLOR.primary} active:scale-[0.98] ${TYPE.control} px-4 py-2 ${RADIUS.chip} transition-all duration-150`}
+              >
+                {t("home.goToJobs")}
+              </Link>
+            }
+          />
         ) : (
           <>
             <div className={`${FORM.card} ${FORM.fieldGap} ${SPACE.afterCard}`}>
@@ -563,14 +632,17 @@ export default function Home() {
           </div>
 
           {recent.length === 0 ? (
-            <div className={`${SURFACE.card} ${RADIUS.card} px-6 py-10 text-center`}>
-              <svg className="w-10 h-10 mx-auto text-gray-600" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
-                <path strokeLinecap="round" d="M9.5 9h5M9.5 13h5M9.5 17h3" />
-              </svg>
-              <p className="mt-3 text-[15px] font-semibold">{t("home.empty.title")}</p>
-              <p className="mt-1 text-[13px] text-gray-500">{t("home.empty.desc")}</p>
-            </div>
+            <EmptyState
+              compact
+              icon={
+                <svg className={ICON.lg} fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+                  <path strokeLinecap="round" d="M9.5 9h5M9.5 13h5M9.5 17h3" />
+                </svg>
+              }
+              title={t("home.empty.title")}
+              description={t("home.empty.desc")}
+            />
           ) : (
             <div className="space-y-2">
               {recent.map((session) => {

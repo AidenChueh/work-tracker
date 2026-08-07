@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useLocale } from "@/hooks/useLocale";
 import { FORM } from "@/lib/theme";
 import { Spinner } from "./FormControls";
+import { useToast } from "./Toast";
 import { JobFormFields, useJobForm } from "./JobFormFields";
 import type { Job } from "@/types/api";
 
@@ -15,6 +16,7 @@ type Props = {
 
 export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
   const { t } = useLocale();
+  const toast = useToast();
   const form = useJobForm();
   const [submitting, setSubmitting] = useState(false);
 
@@ -29,6 +31,7 @@ export function AddJobForm({ deviceId, onJobAdded, onCancel }: Props) {
       body: JSON.stringify(form.buildBody()),
     });
     if (res.ok) onJobAdded(await res.json());
+    else toast(t("toast.failed"), "error");
     setSubmitting(false);
   };
 

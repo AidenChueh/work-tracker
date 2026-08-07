@@ -66,7 +66,8 @@ export function AppNav() {
             <Link
               key={item.href}
               href={item.href}
-              className="flex-1 flex flex-col items-center justify-center py-3 gap-1 active:opacity-70 transition-opacity"
+              aria-current={active ? "page" : undefined}
+              className="flex-1 min-h-[56px] flex flex-col items-center justify-center py-3 gap-1 active:scale-95 active:opacity-70 transition-all duration-150"
             >
               {item.icon(active)}
               <span className={`text-xs transition-colors duration-200 ${active ? "text-blue-400 font-semibold" : "text-gray-500 font-medium"}`}>

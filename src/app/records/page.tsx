@@ -6,10 +6,15 @@ import { useTaxRate } from "@/hooks/useTaxRate";
 import { useLocale } from "@/hooks/useLocale";
 import { useIncomeMode, type IncomeMode } from "@/hooks/useIncomeMode";
 import { RecordForm, draftFromSession, emptyDraft, type RecordDraft } from "@/components/RecordForm";
+import { PageHeader } from "@/components/PageHeader";
+import { PageSkeleton } from "@/components/Skeleton";
+import { EmptyState } from "@/components/EmptyState";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { useToast } from "@/components/Toast";
 import { calcSessionIncome, calcSessionGross, totalWorkMs } from "@/lib/income";
 import { formatHoursMinutes, fmtTime, fmtDateWeekday } from "@/lib/format";
 import { getCached, hasCached, invalidateCache, setCached } from "@/lib/api-cache";
-import { INCOME, PERIOD, RADIUS, SPACE, SURFACE, TYPE, type PeriodKind } from "@/lib/theme";
+import { COLOR, HIT, ICON, INCOME, PERIOD, RADIUS, SPACE, SURFACE, TYPE, type PeriodKind } from "@/lib/theme";
 import type { Job, WorkSession } from "@/types/api";
 
 function localDateStr(date: Date): string {
@@ -111,6 +116,7 @@ type Editor =
 export default function RecordsPage() {
   const { deviceId, loaded } = useDevice();
   const { t, locale } = useLocale();
+  const toast = useToast();
   const [sessions, setSessions] = useState<WorkSession[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
@@ -121,6 +127,8 @@ export default function RecordsPage() {
   const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>("week");
   const [editor, setEditor] = useState<Editor | null>(null);
   const [menuId, setMenuId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<WorkSession | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [collapseOverrides, setCollapseOverrides] = useState<Set<string>>(new Set());
 
   const fetchJobs = useCallback(async (id: string) => {
@@ -241,9 +249,8 @@ export default function RecordsPage() {
   }
 
   async function handleDelete(id: string) {
-    setMenuId(null);
     if (!deviceId) return;
-    if (!window.confirm(t("records.deleteConfirm"))) return;
+    setDeleting(true);
     const res = await fetch(`/api/sessions/${id}`, {
       method: "DELETE",
       headers: { "x-device-id": deviceId },
@@ -254,16 +261,15 @@ export default function RecordsPage() {
       invalidateCache(`jobsMonth:${deviceId}`);
       setSessions(next);
       setCached(`sessions:${deviceId}:${filterPeriod}`, next);
+      toast(t("toast.recordDeleted"));
+    } else {
+      toast(t("toast.failed"), "error");
     }
+    setDeleting(false);
+    setPendingDelete(null);
   }
 
-  if (!loaded || loading) {
-    return (
-      <div className="flex items-center justify-center h-64 bg-gray-950">
-        <div className="text-white">{t("common.loading")}</div>
-      </div>
-    );
-  }
+  if (!loaded || loading) return <PageSkeleton cards={3} lines={3} />;
 
   const jobsWithSessions = jobs.filter((j) => grouped.has(j.id));
   const showAddForm = editor?.mode === "add";
@@ -273,27 +279,29 @@ export default function RecordsPage() {
     <main className="bg-gray-950 text-white">
       <div className={`max-w-md mx-auto ${SPACE.page}`}>
 
-        <div className={`flex items-center justify-between gap-3 ${SPACE.afterHeader}`}>
-          <h1 className={TYPE.pageTitle}>{t("records.title")}</h1>
-          {showAddForm ? (
-            <button
-              onClick={() => setEditor(null)}
-              aria-label={t("common.close")}
-              className={`shrink-0 -mr-2 w-11 h-11 flex items-center justify-center ${RADIUS.cell} ${SURFACE.navBtn} text-gray-400 hover:text-white transition-all duration-150`}
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
-              </svg>
-            </button>
-          ) : (
-            <button
-              onClick={openAdd}
-              className={`shrink-0 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white ${TYPE.control} px-3.5 py-1.5 ${RADIUS.chip} transition-all duration-150`}
-            >
-              {t("records.addBtn")}
-            </button>
-          )}
-        </div>
+        <PageHeader
+          title={t("records.title")}
+          action={
+            showAddForm ? (
+              <button
+                onClick={() => setEditor(null)}
+                aria-label={t("common.close")}
+                className={`-mr-2 ${HIT} ${RADIUS.cell} ${SURFACE.navBtn} text-gray-400 hover:text-white transition-all duration-150`}
+              >
+                <svg className={ICON.md} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+            ) : (
+              <button
+                onClick={openAdd}
+                className={`${COLOR.primary} active:scale-[0.98] ${TYPE.control} px-3.5 py-1.5 ${RADIUS.chip} transition-all duration-150`}
+              >
+                {t("records.addBtn")}
+              </button>
+            )
+          }
+        />
 
         {showAddForm && (
           <RecordForm
@@ -304,6 +312,7 @@ export default function RecordsPage() {
             onSaved={async () => {
               await refresh();
               setEditor(null);
+              toast(t("toast.recordAdded"));
             }}
             onCancel={() => setEditor(null)}
           />
@@ -365,30 +374,43 @@ export default function RecordsPage() {
 
             {jobsWithSessions.length === 0 ? (
               completedSessions.length === 0 && filterPeriod === "all" && !filterJobId ? (
-                <div className={`${SURFACE.card} ${RADIUS.card} px-6 py-10 text-center`}>
-                  <svg className="w-10 h-10 mx-auto text-gray-600" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
-                    <path strokeLinecap="round" d="M9.5 9h5M9.5 13h5M9.5 17h3" />
-                  </svg>
-                  <p className="mt-3 text-[15px] font-semibold">{t("records.empty.title")}</p>
-                  <p className="mt-1 text-[13px] text-gray-500">{t("records.empty.desc")}</p>
-                  <button
-                    onClick={openAdd}
-                    className={`mt-5 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white ${TYPE.control} px-4 py-2 ${RADIUS.chip} transition-all duration-150`}
-                  >
-                    {t("records.empty.cta")}
-                  </button>
-                </div>
+                <EmptyState
+                  icon={
+                    <svg className={ICON.lg} fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+                      <path strokeLinecap="round" d="M9.5 9h5M9.5 13h5M9.5 17h3" />
+                    </svg>
+                  }
+                  title={t("records.empty.title")}
+                  description={t("records.empty.desc")}
+                  action={
+                    <button
+                      onClick={openAdd}
+                      className={`${COLOR.primary} active:scale-[0.98] ${TYPE.control} px-4 py-2 ${RADIUS.chip} transition-all duration-150`}
+                    >
+                      {t("records.empty.cta")}
+                    </button>
+                  }
+                />
               ) : (
-                <div className="flex flex-col items-center justify-center gap-3 py-20">
-                  <p className="text-gray-500 text-sm">{t("records.empty")}</p>
-                  <button
-                    onClick={() => { setFilterPeriod("all"); setFilterJobId(""); }}
-                    className={`px-3.5 py-2 bg-gray-800 hover:bg-gray-700 active:scale-[0.98] text-gray-300 ${TYPE.control} ${RADIUS.chip} transition-all duration-150`}
-                  >
-                    {t("records.showAll")}
-                  </button>
-                </div>
+                <EmptyState
+                  compact
+                  icon={
+                    <svg className={ICON.lg} fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                      <circle cx="11" cy="11" r="7" />
+                      <path strokeLinecap="round" d="M20 20l-3.5-3.5" />
+                    </svg>
+                  }
+                  title={t("records.empty")}
+                  action={
+                    <button
+                      onClick={() => { setFilterPeriod("all"); setFilterJobId(""); }}
+                      className={`px-4 py-2 bg-gray-800 hover:bg-gray-700 active:scale-[0.98] text-gray-300 ${TYPE.control} ${RADIUS.chip} transition-all duration-150`}
+                    >
+                      {t("records.showAll")}
+                    </button>
+                  }
+                />
               )
             ) : (
               <div className="space-y-4">
@@ -483,6 +505,7 @@ export default function RecordsPage() {
                                             onSaved={async () => {
                                               await refresh();
                                               setEditor(null);
+                                              toast(t("toast.recordSaved"));
                                             }}
                                             onCancel={() => setEditor(null)}
                                           />
@@ -568,7 +591,7 @@ export default function RecordsPage() {
               {[
                 { label: t("common.edit"), onClick: () => openEdit(menuSession), tone: "text-gray-100" },
                 { label: t("records.duplicate"), onClick: () => openDuplicate(menuSession), tone: "text-gray-100" },
-                { label: t("common.delete"), onClick: () => handleDelete(menuSession.id), tone: "text-red-400" },
+                { label: t("common.delete"), onClick: () => { setMenuId(null); setPendingDelete(menuSession); }, tone: COLOR.dangerText },
               ].map((item) => (
                 <button
                   key={item.label}
@@ -587,6 +610,16 @@ export default function RecordsPage() {
             </button>
           </div>
         </div>
+      )}
+
+      {pendingDelete && (
+        <ConfirmDialog
+          title={t("dialog.deleteRecord")}
+          description={t("dialog.deleteRecordDesc")}
+          busy={deleting}
+          onConfirm={() => handleDelete(pendingDelete.id)}
+          onCancel={() => setPendingDelete(null)}
+        />
       )}
     </main>
   );

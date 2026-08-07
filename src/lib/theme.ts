@@ -30,8 +30,37 @@ export const SURFACE = {
   divider: "border-t border-gray-800",
 } as const;
 
+// 語意色：所有頁面只用這裡的組合，不要在頁面裡寫死顏色
+export const COLOR = {
+  primary: "bg-blue-600 hover:bg-blue-700 text-white",
+  primaryText: "text-blue-400 hover:text-blue-300",
+  success: "text-emerald-400",
+  successSoft: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+  warningSoft: "bg-amber-500/10 text-amber-300 border-amber-500/25",
+  dangerText: "text-red-400",
+  dangerSoft: "bg-red-500/15 text-red-200 border-red-500/30",
+  infoSoft: "bg-blue-500/15 text-blue-300 border-blue-500/30",
+  neutralSoft: "bg-gray-700/60 text-gray-300 border-gray-600",
+  muted: "text-gray-500",
+  body: "text-gray-300",
+} as const;
+
+// icon 尺寸：xs 內文用、sm 欄位/badge、md 按鈕、lg Empty State
+export const ICON = {
+  xs: "w-3 h-3",
+  sm: "w-4 h-4",
+  md: "w-5 h-5",
+  lg: "w-10 h-10",
+} as const;
+
+// 44×44 是 HIG 的最小點擊區，所有純 icon 按鈕都用這個
+export const HIT = "w-11 h-11 flex items-center justify-center";
+
 export const TYPE = {
   pageTitle: "text-xl font-semibold leading-7 tracking-tight",
+  body: "text-[13px] leading-5",
+  caption: "text-[11px] leading-4",
+  emptyTitle: "text-[15px] font-semibold leading-5",
   sectionLabel: "text-[10px] font-semibold leading-4 tracking-wider text-gray-500 uppercase",
   control: "text-[13px] font-medium leading-5",
   rowTitle: "text-[15px] font-semibold leading-5 tracking-tight",

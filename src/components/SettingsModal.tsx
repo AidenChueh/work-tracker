@@ -5,6 +5,7 @@ import { useLocale } from "@/hooks/useLocale";
 import { clearDeviceSession } from "@/hooks/useDevice";
 import { clearCache } from "@/lib/api-cache";
 import { LocaleToggle } from "@/components/LocaleToggle";
+import { FORM, RADIUS, TYPE } from "@/lib/theme";
 
 type Props = {
   deviceId: string;
@@ -45,23 +46,23 @@ export function SettingsModal({ deviceId, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 z-[60] flex items-end justify-center"
+      className="fixed inset-0 bg-black/60 z-[60] flex items-end justify-center animate-fade-in"
       onClick={onClose}
     >
       <div
-        className="bg-gray-900 border-t border-gray-800 rounded-t-2xl w-full max-w-md p-6 pb-10"
+        className="bg-gray-900 border-t border-gray-800 rounded-t-2xl w-full max-w-md p-6 pb-[calc(2.5rem+env(safe-area-inset-bottom))] animate-sheet-up"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-lg font-semibold mb-5">{t("settings.title")}</h2>
+        <h2 className={`${TYPE.pageTitle} mb-5`}>{t("settings.title")}</h2>
 
         <div className="mb-6">
-          <p className="text-sm text-gray-400 mb-2">{t("settings.deviceIdLabel")}</p>
-          <div className="bg-gray-800 rounded-xl px-4 py-3 flex items-center gap-3">
-            <p className="font-mono text-xs text-gray-300 flex-1 break-all select-all">{deviceId}</p>
+          <p className={`${FORM.label} mb-2`}>{t("settings.deviceIdLabel")}</p>
+          <div className={`bg-gray-800 ${RADIUS.cell} px-3.5 py-3 flex items-center gap-3`}>
+            <p className="font-mono text-[11px] leading-4 text-gray-300 flex-1 break-all select-all">{deviceId}</p>
             <button
               type="button"
               onClick={handleCopy}
-              className="shrink-0 text-xs px-3 py-1.5 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
+              className={`shrink-0 h-9 px-3 ${RADIUS.chip} bg-gray-700 text-gray-300 ${TYPE.control} hover:bg-gray-600 active:scale-[0.98] transition-all duration-150`}
             >
               {copyState === "copied" ? t("settings.copied") : copyState === "failed" ? t("settings.copyFailed") : t("settings.copy")}
             </button>
@@ -69,14 +70,14 @@ export function SettingsModal({ deviceId, onClose }: Props) {
         </div>
 
         <div className="flex items-center justify-between mb-6">
-          <p className="text-sm text-gray-400">{t("settings.language")}</p>
+          <p className={FORM.label}>{t("settings.language")}</p>
           <LocaleToggle />
         </div>
 
         <button
           type="button"
           onClick={handleLogout}
-          className="w-full py-3 rounded-xl bg-red-900/40 text-red-400 font-medium hover:bg-red-900/60 transition-colors"
+          className={`w-full ${FORM.btnDanger}`}
         >
           {t("settings.logout")}
         </button>

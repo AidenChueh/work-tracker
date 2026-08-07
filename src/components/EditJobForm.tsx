@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useLocale } from "@/hooks/useLocale";
 import { FORM } from "@/lib/theme";
 import { Spinner } from "./FormControls";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { useToast } from "./Toast";
 import { JobFormFields, useJobForm } from "./JobFormFields";
 import type { Job } from "@/types/api";
 
@@ -17,9 +19,11 @@ type Props = {
 
 export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Props) {
   const { t } = useLocale();
+  const toast = useToast();
   const form = useJobForm(job);
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [showScope, setShowScope] = useState(false);
   const [pendingBody, setPendingBody] = useState<Record<string, unknown> | null>(null);
 
@@ -55,6 +59,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
       body: JSON.stringify(applyToPast === undefined ? body : { ...body, applyToPast }),
     });
     if (res.ok) onSaved(await res.json());
+    else toast(t("toast.failed"), "error");
     setSubmitting(false);
   };
 
@@ -81,14 +86,15 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
   };
 
   const handleDelete = async () => {
-    if (!window.confirm(t("form.deleteConfirm", { name: job.name }))) return;
     setDeleting(true);
     const res = await fetch(`/api/jobs/${job.id}`, {
       method: "DELETE",
       headers: { "x-device-id": deviceId },
     });
     if (res.ok) onDeleted(job.id);
+    else toast(t("toast.failed"), "error");
     setDeleting(false);
+    setConfirmDelete(false);
   };
 
   return (
@@ -148,7 +154,7 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
             <p className={FORM.dangerLabel}>{t("form.dangerZone")}</p>
             <button
               type="button"
-              onClick={handleDelete}
+              onClick={() => setConfirmDelete(true)}
               disabled={deleting}
               className={`mt-2 w-full inline-flex items-center justify-center gap-2 ${FORM.btnDanger}`}
             >
@@ -157,6 +163,16 @@ export function EditJobForm({ job, deviceId, onSaved, onCancel, onDeleted }: Pro
             </button>
           </div>
         </>
+      )}
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title={t("dialog.deleteJob", { name: job.name })}
+          description={t("dialog.deleteJobDesc")}
+          busy={deleting}
+          onConfirm={handleDelete}
+          onCancel={() => setConfirmDelete(false)}
+        />
       )}
     </form>
   );

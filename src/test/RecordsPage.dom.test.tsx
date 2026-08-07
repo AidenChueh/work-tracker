@@ -76,21 +76,37 @@ async function openEditForm() {
 }
 
 describe("RecordsPage — 刪除紀錄", () => {
-  it("⋯ → 刪除 → 確認後送出 DELETE", async () => {
+  it("⋯ → 刪除 → 確認對話框確認後送出 DELETE", async () => {
     const job = makeJob();
     const session = makeSession(job);
     setFetch([job], [session]);
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
 
     render(<RecordsPage />);
     fireEvent.click(await screen.findByLabelText("更多操作"));
     fireEvent.click(screen.getByText("刪除"));
 
-    expect(confirmSpy).toHaveBeenCalled();
+    // 確認對話框出現，尚未送出刪除
+    expect(screen.getByText("刪除這筆打卡紀錄？")).toBeInTheDocument();
     const calls = (global.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls.some((c) => (c[1] as RequestInit | undefined)?.method === "DELETE")).toBe(false);
+
+    fireEvent.click(screen.getByText("刪除"));
     const del = calls.find((c) => (c[1] as RequestInit | undefined)?.method === "DELETE");
     expect(del?.[0]).toBe(`/api/sessions/${session.id}`);
-    confirmSpy.mockRestore();
+  });
+
+  it("確認對話框按取消不會送出 DELETE", async () => {
+    const job = makeJob();
+    setFetch([job], [makeSession(job)]);
+
+    render(<RecordsPage />);
+    fireEvent.click(await screen.findByLabelText("更多操作"));
+    fireEvent.click(screen.getByText("刪除"));
+    fireEvent.click(screen.getByText("取消"));
+
+    const calls = (global.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls.some((c) => (c[1] as RequestInit | undefined)?.method === "DELETE")).toBe(false);
+    expect(screen.queryByText("刪除這筆打卡紀錄？")).not.toBeInTheDocument();
   });
 });
 
