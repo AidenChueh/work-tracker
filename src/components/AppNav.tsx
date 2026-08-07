@@ -58,7 +58,8 @@ export function AppNav() {
   if (pathname === "/login") return null;
 
   return (
-    <nav className="shrink-0 bg-gray-900 border-t border-gray-800 z-50 pb-[env(safe-area-inset-bottom)]">
+    // safe-area 不疊加在 py-2 上：只補足不夠的部分，home indicator 區仍留白但不多出 8px
+    <nav className="shrink-0 bg-gray-900 border-t border-gray-800 z-50 pb-[max(0px,calc(env(safe-area-inset-bottom,0px)_-_0.5rem))]">
       <div className="max-w-md mx-auto flex">
         {NAV_ITEMS.map((item) => {
           const active = pathname === item.href;
@@ -67,7 +68,7 @@ export function AppNav() {
               key={item.href}
               href={item.href}
               aria-current={active ? "page" : undefined}
-              className="flex-1 min-h-[56px] flex flex-col items-center justify-center py-3 gap-1 active:scale-95 active:opacity-70 transition-all duration-150"
+              className="flex-1 min-h-[56px] flex flex-col items-center justify-center py-2 gap-1 active:scale-95 active:opacity-70 transition-all duration-150"
             >
               {item.icon(active)}
               <span className={`text-xs transition-colors duration-200 ${active ? "text-blue-400 font-semibold" : "text-gray-500 font-medium"}`}>
