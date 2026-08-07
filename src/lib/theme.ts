@@ -80,6 +80,8 @@ export const FORM = {
     "h-11 rounded-xl bg-blue-600 text-white text-[15px] font-semibold hover:bg-blue-700 active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100 transition-all duration-150",
   btnSecondary:
     "h-11 rounded-xl bg-gray-700 text-gray-300 text-[15px] font-medium hover:bg-gray-600 active:scale-[0.98] disabled:opacity-50 transition-all duration-150",
+  btnStop:
+    "h-11 rounded-xl bg-red-600 text-white text-[15px] font-semibold hover:bg-red-700 active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100 transition-all duration-150",
   btnDanger:
     "h-11 rounded-xl border border-red-500/30 bg-red-500/10 text-red-300 text-[13px] font-medium hover:bg-red-500/20 active:scale-[0.98] disabled:opacity-50 transition-all duration-150",
   dangerLabel: "text-[11px] font-semibold leading-4 tracking-wide text-red-400/70 uppercase",

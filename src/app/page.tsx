@@ -1,22 +1,59 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useDevice } from "@/hooks/useDevice";
 import { useTaxRate } from "@/hooks/useTaxRate";
 import { useLocale } from "@/hooks/useLocale";
-import { calcSessionIncome, totalWorkMs } from "@/lib/income";
-import { formatDuration, fmtTime, fmtDateWeekday, formatTodayLabel } from "@/lib/format";
-import { getCached, hasCached, setCached } from "@/lib/api-cache";
+import { calcSessionIncome, totalWorkMs, type SessionBase } from "@/lib/income";
+import { formatDuration, formatHoursMinutes, fmtTime, fmtDateWeekday, formatTodayLabel } from "@/lib/format";
+import { getCached, hasCached, invalidateCache, setCached } from "@/lib/api-cache";
 import { SettingsModal } from "@/components/SettingsModal";
+import { StatField } from "@/components/StatField";
+import { SelectField, TextField, TextAreaField, TimeField, ToggleRow, Spinner } from "@/components/FormControls";
+import { FORM, RADIUS, SPACE, SURFACE, TYPE } from "@/lib/theme";
 import type { Job, WorkSession } from "@/types/api";
 
-function todayWithTime(time: string): Date {
+function dateWithTime(base: Date, time: string): Date {
   const [h, m] = time.split(":").map((s) => parseInt(s, 10));
-  const d = new Date();
+  const d = new Date(base);
   d.setHours(h || 0, m || 0, 0, 0);
   return d;
 }
+
+function localDateStr(d: Date): string {
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
+function money(n: number): string {
+  return `$${n.toFixed(2)}`;
+}
+
+function ClockIcon() {
+  return (
+    <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9" />
+      <path strokeLinecap="round" d="M12 7v5l3 2" />
+    </svg>
+  );
+}
+
+function MoneyIcon() {
+  return (
+    <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9" />
+      <path strokeLinecap="round" d="M14.5 9.5a2.5 2.5 0 0 0-2.5-1.5c-1.4 0-2.5.7-2.5 2s1.1 1.8 2.5 2 2.5.7 2.5 2-1.1 2-2.5 2a2.5 2.5 0 0 1-2.5-1.5M12 6.5v11" />
+    </svg>
+  );
+}
+
+type TodayStatus = "idle" | "working" | "done";
+
+const STATUS_STYLE: Record<TodayStatus, string> = {
+  idle: "bg-gray-700/60 text-gray-300 border-gray-600",
+  working: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+  done: "bg-blue-500/15 text-blue-300 border-blue-500/30",
+};
 
 export default function Home() {
   const { deviceId, loaded } = useDevice();
@@ -26,7 +63,7 @@ export default function Home() {
   const [activeSession, setActiveSession] = useState<WorkSession | null>(null);
   const [elapsed, setElapsed] = useState<number>(0);
   const [loading, setLoading] = useState(true);
-  const [recentSessions, setRecentSessions] = useState<WorkSession[]>([]);
+  const [sessions, setSessions] = useState<WorkSession[]>([]);
   const [dailyRevenue, setDailyRevenue] = useState("");
   const [notes, setNotes] = useState("");
   const [isPublicHoliday, setIsPublicHoliday] = useState(false);
@@ -37,6 +74,7 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false);
   const [fixedTimeIn, setFixedTimeIn] = useState("");
   const [fixedTimeOut, setFixedTimeOut] = useState("");
+  const [clockAgain, setClockAgain] = useState(false);
   const taxRate = useTaxRate();
 
   const fetchJobs = useCallback(async (id: string) => {
@@ -59,12 +97,11 @@ export default function Home() {
   }, []);
 
   const fetchRecentSessions = useCallback(async (id: string) => {
-    const res = await fetch("/api/sessions", { headers: { "x-device-id": id } });
+    const res = await fetch("/api/sessions?limit=20", { headers: { "x-device-id": id } });
     if (res.ok) {
       const data: WorkSession[] = await res.json();
-      const recent = data.filter((s) => s.clockOut !== null).slice(0, 3);
-      setRecentSessions(recent);
-      setCached(`recent:${id}`, recent);
+      setSessions(data);
+      setCached(`recent:${id}`, data);
     }
   }, []);
 
@@ -76,7 +113,7 @@ export default function Home() {
       setJobs(cachedJobs);
       if (cachedJobs.length > 0) setSelectedJobId((prev) => prev || cachedJobs[0].id);
       setActiveSession(getCached<WorkSession | null>(`active:${deviceId}`) ?? null);
-      setRecentSessions(getCached<WorkSession[]>(`recent:${deviceId}`) ?? []);
+      setSessions(getCached<WorkSession[]>(`recent:${deviceId}`) ?? []);
       setLoading(false);
     }
     Promise.all([
@@ -105,6 +142,54 @@ export default function Home() {
     }
   }, [selectedJob?.id]);
 
+  const todayDone = useMemo(() => {
+    const today = localDateStr(new Date());
+    return sessions.filter((s) => s.clockOut !== null && localDateStr(new Date(s.clockIn)) === today);
+  }, [sessions]);
+
+  const recent = useMemo(
+    () => sessions.filter((s) => s.id !== activeSession?.id).slice(0, 2),
+    [sessions, activeSession]
+  );
+
+  // 上班中的即時工時／收入：每秒隨 elapsed 重算
+  const live = useMemo(() => {
+    if (!activeSession) return null;
+    const revenue = dailyRevenue === "" ? activeSession.dailyRevenue : parseFloat(dailyRevenue);
+    const base: SessionBase = { ...activeSession, isPublicHoliday, dailyRevenue: isNaN(revenue as number) ? null : revenue };
+    const now: SessionBase = { ...base, clockOut: new Date().toISOString() };
+
+    const end = activeSession.job.fixedClockOut;
+    let shiftEnd: Date | null = null;
+    if (end) {
+      const start = new Date(activeSession.clockIn);
+      const candidate = dateWithTime(start, end);
+      if (candidate <= start) candidate.setDate(candidate.getDate() + 1);
+      shiftEnd = candidate;
+    }
+
+    return {
+      workMs: totalWorkMs(now) ?? 0,
+      income: calcSessionIncome(now, taxRate),
+      remainingMs: shiftEnd ? shiftEnd.getTime() - Date.now() : null,
+      endIncome: shiftEnd ? calcSessionIncome({ ...base, clockOut: shiftEnd.toISOString() }, taxRate) : null,
+    };
+    // elapsed 讓計時中的數字每秒更新
+  }, [activeSession, elapsed, dailyRevenue, isPublicHoliday, taxRate]);
+
+  const status: TodayStatus = activeSession ? "working" : todayDone.length > 0 ? "done" : "idle";
+
+  const todayWorkedMs = todayDone.reduce((sum, s) => sum + (totalWorkMs(s) ?? 0), 0) + (live?.workMs ?? 0);
+  const todayIncome =
+    todayDone.reduce((sum, s) => sum + (calcSessionIncome(s, taxRate) ?? 0), 0) + (live?.income ?? 0);
+  const hasIncome = todayDone.length > 0 || live?.income != null;
+
+  function invalidateShared() {
+    if (!deviceId) return;
+    invalidateCache(`sessions:${deviceId}`);
+    invalidateCache(`jobsMonth:${deviceId}`);
+  }
+
   const handleClockIn = async () => {
     if (!selectedJobId || !deviceId || submitting) return;
     setClockError("");
@@ -119,6 +204,8 @@ export default function Home() {
       setActiveSession(data);
       setCached(`active:${deviceId}`, data);
       setElapsed(0);
+      setClockAgain(false);
+      invalidateShared();
     } else {
       const data = await res.json().catch(() => ({}));
       setClockError(data.error ?? t("home.clockFailed"));
@@ -147,6 +234,8 @@ export default function Home() {
       setDailyRevenue("");
       setNotes("");
       setIsPublicHoliday(false);
+      setClockAgain(false);
+      invalidateShared();
       fetchRecentSessions(deviceId).catch(() => {});
     } else {
       const data = await res.json().catch(() => ({}));
@@ -159,8 +248,9 @@ export default function Home() {
     if (!selectedJob || !deviceId || !fixedTimeIn || !fixedTimeOut) return;
     setSubmittingFixed(true);
     setFixedFeedback("");
-    const clockIn = todayWithTime(fixedTimeIn);
-    const clockOut = todayWithTime(fixedTimeOut);
+    const today = new Date();
+    const clockIn = dateWithTime(today, fixedTimeIn);
+    const clockOut = dateWithTime(today, fixedTimeOut);
     // 下班時間早於上班視為跨夜班，落在隔天
     if (clockOut <= clockIn) clockOut.setDate(clockOut.getDate() + 1);
     const body: Record<string, unknown> = {
@@ -178,20 +268,24 @@ export default function Home() {
     });
     if (res.ok) {
       setFixedFeedback(
-        t("home.fixedAdded", {
-          name: selectedJob.name,
-          start: fixedTimeIn,
-          end: fixedTimeOut,
-        })
+        t("home.fixedAdded", { name: selectedJob.name, start: fixedTimeIn, end: fixedTimeOut })
       );
       setDailyRevenue("");
       setIsPublicHoliday(false);
+      setClockAgain(false);
+      invalidateShared();
       await fetchRecentSessions(deviceId);
     } else {
       setFixedFeedback(t("home.addFailed"));
     }
     setSubmittingFixed(false);
   };
+
+  function applyPresetTimes() {
+    if (!selectedJob) return;
+    setFixedTimeIn(selectedJob.fixedClockIn ?? "");
+    setFixedTimeOut(selectedJob.fixedClockOut ?? "");
+  }
 
   if (!loaded) return null;
 
@@ -205,27 +299,54 @@ export default function Home() {
 
   const isCommissionJob = activeSession?.job.commissionPercentage != null;
   const fixedIsCommission = selectedJob?.commissionPercentage != null;
-  const clockOutDisabled = isCommissionJob && (activeSession?.job.commissionRequired ?? false) && !dailyRevenue;
-  const fixedDisabled = submittingFixed || !fixedTimeIn || !fixedTimeOut || (fixedIsCommission && (selectedJob?.commissionRequired ?? false) && !dailyRevenue);
+  const revenueRequired = activeSession
+    ? isCommissionJob && (activeSession.job.commissionRequired ?? false)
+    : isFixedSchedule && fixedIsCommission && (selectedJob?.commissionRequired ?? false);
+  const revenueMissing = revenueRequired && !dailyRevenue;
+  const showRevenue = (activeSession && isCommissionJob) || (!activeSession && isFixedSchedule && fixedIsCommission);
+  const showHoliday =
+    (activeSession && activeSession.job.penaltyRatesEnabled) ||
+    (!activeSession && isFixedSchedule && selectedJob?.penaltyRatesEnabled);
+  const doneForToday = status === "done" && !clockAgain;
+
+  const summaryStats: { label: string; value: string; tone?: string }[] = [
+    {
+      label: t("home.todayWorked"),
+      value: todayWorkedMs > 0 ? formatHoursMinutes(todayWorkedMs) : "—",
+    },
+    {
+      label: activeSession ? t("home.estIncome") : t("home.todayIncome"),
+      value: hasIncome ? money(todayIncome) : "—",
+      tone: "text-emerald-400",
+    },
+  ];
+  if (live && live.remainingMs !== null) {
+    summaryStats.push({
+      label: t("home.untilOff"),
+      value: live.remainingMs > 0 ? formatHoursMinutes(live.remainingMs) : t("home.overtime"),
+    });
+    summaryStats.push({
+      label: t("home.estAtEnd"),
+      value: live.endIncome !== null ? money(live.endIncome) : "—",
+      tone: "text-emerald-400",
+    });
+  }
 
   return (
     <main className="bg-gray-950 text-white">
-      <div className="max-w-md mx-auto px-4 py-8">
-        <div className="flex items-start justify-between gap-2 mb-6">
+      <div className={`max-w-md mx-auto ${SPACE.page}`}>
+
+        {/* Header */}
+        <div className={`flex items-start justify-between gap-2 ${SPACE.afterHeader}`}>
           <div className="min-w-0">
-            <h1 className="flex items-baseline gap-2 min-w-0">
-              <span className="text-xl font-semibold truncate">Work Tracker</span>
-              <span className="shrink-0 text-[11px] font-medium leading-4 text-gray-500 tabular-nums">
-                {process.env.NEXT_PUBLIC_APP_VERSION}
-              </span>
-            </h1>
-            <p className="text-sm text-gray-500 mt-0.5">{formatTodayLabel()}</p>
+            <h1 className={`${TYPE.pageTitle} truncate`}>Work Tracker</h1>
+            <p className={`mt-0.5 ${TYPE.rowMeta}`}>{formatTodayLabel()}</p>
           </div>
           <button
             type="button"
             onClick={() => setShowSettings(true)}
-            className="shrink-0 p-1.5 text-gray-500 hover:text-white transition-colors"
-            aria-label="Settings"
+            className={`shrink-0 -mr-2 w-11 h-11 flex items-center justify-center ${RADIUS.cell} ${SURFACE.navBtn} text-gray-400 hover:text-white transition-all duration-150`}
+            aria-label={t("settings.title")}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
@@ -237,199 +358,266 @@ export default function Home() {
           <SettingsModal deviceId={deviceId} onClose={() => setShowSettings(false)} />
         )}
 
-        {/* Active session timer */}
-        {activeSession && (
-          <div className="bg-green-900/40 border border-green-700 rounded-2xl p-6 mb-4 text-center">
-            <p className="text-green-400 text-sm uppercase tracking-wide mb-1">
-              {t("home.activeWith", { name: activeSession.job.name })}
-            </p>
-            <p className="text-5xl font-mono font-bold">{formatDuration(elapsed)}</p>
-            <p className="text-gray-400 text-sm mt-2">
-              {t("home.since", { time: fmtTime(activeSession.clockIn) })}
-            </p>
+        {/* 今日摘要 */}
+        <div
+          className={`${SURFACE.card} ${RADIUS.card} ${SPACE.card} ${SPACE.afterCard} ${
+            activeSession ? "ring-1 ring-emerald-500/25" : ""
+          }`}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <span className={TYPE.cardLabel}>{t("home.summaryTitle")}</span>
+            <span
+              className={`inline-flex items-center gap-1.5 px-2 py-0.5 border ${RADIUS.pill} ${TYPE.badgeLabel} ${STATUS_STYLE[status]}`}
+            >
+              {status === "working" && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
+              {t(`home.status.${status}`)}
+            </span>
           </div>
-        )}
 
-        {/* Job selector */}
-        {!activeSession && (
-          <div className="mb-4">
-            {jobs.length > 0 ? (
-              <>
-                <label className="block text-xs text-gray-500 uppercase tracking-wide mb-2">{t("home.selectJob")}</label>
-                <select
+          {activeSession && (
+            <div className="mt-4 text-center">
+              <p className="font-mono font-bold text-[40px] leading-none tabular-nums">{formatDuration(elapsed)}</p>
+              <p className={`mt-2 ${TYPE.rowMeta}`}>
+                {activeSession.job.name} · {t("home.since", { time: fmtTime(activeSession.clockIn) })}
+              </p>
+            </div>
+          )}
+
+          <div className={`mt-4 pt-4 grid grid-cols-2 gap-4 ${SURFACE.divider}`}>
+            {summaryStats.map((s) => (
+              <StatField key={s.label} size="md" label={s.label} value={s.value} tone={s.tone} />
+            ))}
+          </div>
+        </div>
+
+        {/* 打卡 */}
+        {jobs.length === 0 && !activeSession ? (
+          <div className={`${SURFACE.card} ${RADIUS.card} px-6 py-10 text-center`}>
+            <p className="text-[15px] font-semibold">{t("home.noJobs")}</p>
+            <Link
+              href="/jobs"
+              className={`mt-4 inline-block bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white ${TYPE.control} px-4 py-2 ${RADIUS.chip} transition-all duration-150`}
+            >
+              {t("home.goToJobs")}
+            </Link>
+          </div>
+        ) : (
+          <>
+            <div className={`${FORM.card} ${FORM.fieldGap} ${SPACE.afterCard}`}>
+              {activeSession ? (
+                <div>
+                  <p className={FORM.label}>{t("records.work")}</p>
+                  <p className="mt-1.5 text-[15px] font-semibold leading-5">{activeSession.job.name}</p>
+                </div>
+              ) : (
+                <SelectField
+                  label={t("home.selectJob")}
                   value={selectedJobId}
                   onChange={(e) => { setSelectedJobId(e.target.value); setFixedFeedback(""); }}
-                  className="block w-full max-w-full min-w-0 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-base focus:outline-none focus:border-blue-500"
+                  options={jobs.map((j) => ({ value: j.id, label: j.name }))}
+                />
+              )}
+
+              {/* 工作資訊：固定班 badge + 時薪 */}
+              {(activeSession?.job ?? selectedJob) && (
+                <div className="flex items-center gap-2 -mt-2">
+                  {(activeSession?.job ?? selectedJob)!.scheduleType === "fixed" && (
+                    <span className={`px-1.5 border ${RADIUS.pill} ${TYPE.badgeLabel} bg-gray-700/60 text-gray-300 border-gray-600`}>
+                      {t("home.fixedTag")}
+                    </span>
+                  )}
+                  <span className={`${TYPE.rowValue} text-gray-300`}>
+                    {(activeSession?.job ?? selectedJob)!.hourlyRate != null
+                      ? `$${(activeSession?.job ?? selectedJob)!.hourlyRate}/hr`
+                      : (activeSession?.job ?? selectedJob)!.commissionPercentage != null
+                      ? t("jobs.commission", { pct: (((activeSession?.job ?? selectedJob)!.commissionPercentage ?? 0) * 100).toFixed(0) })
+                      : t("jobs.notSet")}
+                  </span>
+                </div>
+              )}
+
+              {/* 固定班：預設班表 */}
+              {!activeSession && isFixedSchedule && (
+                <div className="pt-4 border-t border-gray-700">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className={FORM.sectionTitle}>{t("home.defaultShift")}</p>
+                    <button
+                      type="button"
+                      onClick={applyPresetTimes}
+                      className={`px-2.5 py-1 rounded-lg bg-gray-700 text-gray-300 ${TYPE.rowMeta} hover:bg-gray-600 active:scale-[0.98] transition-all duration-150`}
+                    >
+                      {t("records.usePreset")}
+                    </button>
+                  </div>
+                  <p className={`mt-1 ${FORM.helper}`}>{t("home.defaultShiftHint")}</p>
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    <TimeField
+                      label={t("common.clockIn")}
+                      value={fixedTimeIn}
+                      placeholder="--:--"
+                      onChange={(e) => setFixedTimeIn(e.target.value)}
+                    />
+                    <TimeField
+                      label={t("common.clockOut")}
+                      value={fixedTimeOut}
+                      placeholder="--:--"
+                      onChange={(e) => setFixedTimeOut(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {showRevenue && (
+                <TextField
+                  type="number"
+                  label={t("home.todayRevenue")}
+                  required={revenueRequired}
+                  prefix="$"
+                  value={dailyRevenue}
+                  onChange={(e) => setDailyRevenue(e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                  placeholder="0.00"
+                  min="0"
+                  step="0.01"
+                />
+              )}
+
+              {showHoliday && (
+                <ToggleRow
+                  label={t("home.publicHoliday")}
+                  checked={isPublicHoliday}
+                  onChange={() => setIsPublicHoliday((v) => !v)}
+                />
+              )}
+
+              {activeSession && (
+                <TextAreaField
+                  label={t("common.notes")}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder={t("common.notesPlaceholder")}
+                  rows={2}
+                />
+              )}
+            </div>
+
+            {/* Primary action */}
+            {activeSession ? (
+              <button
+                onClick={handleClockOut}
+                disabled={submitting || revenueMissing}
+                className={`w-full ${FORM.btnStop} inline-flex items-center justify-center gap-2`}
+              >
+                {submitting && <Spinner />}
+                {t("home.clockOut")}
+              </button>
+            ) : doneForToday ? (
+              <>
+                <button disabled className={`w-full ${FORM.btnPrimary}`}>
+                  {t("home.doneToday")}
+                </button>
+                <button
+                  onClick={() => setClockAgain(true)}
+                  className={`mt-2 w-full py-2 ${TYPE.control} text-gray-400 hover:text-white transition-colors`}
                 >
-                  {jobs.map((job) => (
-                    <option key={job.id} value={job.id}>
-                      {job.name}{job.hourlyRate != null ? ` · $${job.hourlyRate}/hr` : ""}
-                      {job.scheduleType === "fixed" ? ` · ${t("home.fixedTag")}` : ""}
-                    </option>
-                  ))}
-                </select>
+                  {t("home.clockAgain")}
+                </button>
               </>
+            ) : isFixedSchedule ? (
+              <button
+                onClick={handleFixedClockIn}
+                disabled={submittingFixed || !fixedTimeIn || !fixedTimeOut || revenueMissing}
+                className={`w-full ${FORM.btnPrimary} inline-flex items-center justify-center gap-2`}
+              >
+                {submittingFixed && <Spinner />}
+                {t("home.fixedAddBtn")}
+              </button>
             ) : (
-              <div className="text-center py-4">
-                <p className="text-gray-400 mb-3">{t("home.noJobs")}</p>
-                <Link
-                  href="/jobs"
-                  className="inline-block bg-blue-600 hover:bg-blue-700 text-white text-sm px-5 py-2.5 rounded-xl transition-colors"
-                >
-                  {t("home.goToJobs")}
-                </Link>
-              </div>
+              <button
+                onClick={handleClockIn}
+                disabled={submitting || !selectedJobId}
+                className={`w-full ${FORM.btnPrimary} inline-flex items-center justify-center gap-2`}
+              >
+                {submitting && <Spinner />}
+                {t("home.clockIn")}
+              </button>
             )}
-          </div>
-        )}
 
-        {/* Commission revenue input */}
-        {((activeSession && isCommissionJob) || (!activeSession && isFixedSchedule && fixedIsCommission)) && (
-          <div className="bg-gray-800 rounded-2xl p-4 mb-4">
-            <label className="block text-sm text-gray-400 mb-1.5">
-              {t("home.todayRevenue")}
-              {(activeSession?.job.commissionRequired ?? selectedJob?.commissionRequired)
-                ? <span className="text-red-400 ml-1">{t("common.required")}</span>
-                : <span className="text-gray-500 ml-1">{t("common.optional")}</span>
-              }
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
-              <input
-                type="number"
-                value={dailyRevenue}
-                onChange={(e) => setDailyRevenue(e.target.value)}
-                onFocus={(e) => e.target.select()}
-                placeholder="0.00"
-                min="0"
-                step="0.01"
-                className="block w-full max-w-full min-w-0 bg-gray-700 rounded-xl pl-7 pr-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Public holiday toggle */}
-        {((activeSession && activeSession.job.penaltyRatesEnabled) ||
-          (!activeSession && isFixedSchedule && selectedJob?.penaltyRatesEnabled)) && (
-          <div className="flex items-center justify-between bg-gray-800 rounded-2xl px-4 py-3 mb-4">
-            <span className="text-sm text-gray-300">{t("home.publicHoliday")}</span>
-            <button
-              type="button"
-              onClick={() => setIsPublicHoliday((v) => !v)}
-              className={`relative inline-flex w-10 h-5 rounded-full transition-colors flex-shrink-0 ${isPublicHoliday ? "bg-amber-500" : "bg-gray-600"}`}
-            >
-              <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${isPublicHoliday ? "translate-x-5" : "translate-x-0"}`} />
-            </button>
-          </div>
-        )}
-
-        {/* Notes (shown while clocked in, saved on clock-out) */}
-        {activeSession && (
-          <div className="bg-gray-800 rounded-2xl p-4 mb-4">
-            <label className="block text-sm text-gray-400 mb-1.5">{t("common.notes")}</label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder={t("common.notesPlaceholder")}
-              rows={2}
-              className="block w-full max-w-full min-w-0 box-border bg-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-            />
-          </div>
-        )}
-
-        {/* Fixed schedule time inputs + button */}
-        {!activeSession && isFixedSchedule && (
-          <>
-            <div className="bg-gray-800 rounded-2xl p-4 mb-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1.5">{t("common.clockIn")}</label>
-                  <input
-                    type="time"
-                    value={fixedTimeIn}
-                    onChange={(e) => setFixedTimeIn(e.target.value)}
-                    className="w-full bg-gray-700 border border-gray-600 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1.5">{t("common.clockOut")}</label>
-                  <input
-                    type="time"
-                    value={fixedTimeOut}
-                    onChange={(e) => setFixedTimeOut(e.target.value)}
-                    className="w-full bg-gray-700 border border-gray-600 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-              </div>
-            </div>
-            <button
-              onClick={handleFixedClockIn}
-              disabled={fixedDisabled}
-              className="w-full py-3.5 rounded-xl text-base font-semibold tracking-wide transition-all mt-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {submittingFixed ? t("common.adding") : t("home.fixedAddBtn")}
-            </button>
-            {fixedFeedback && (
-              <p className="text-xs text-center text-green-400 mt-2">{fixedFeedback}</p>
+            {clockError && <p className={`mt-2 text-center ${FORM.error}`}>{clockError}</p>}
+            {fixedFeedback && <p className="mt-2 text-center text-[11px] leading-4 text-emerald-400">{fixedFeedback}</p>}
+            {!clockError && revenueMissing && (
+              <p className={`mt-2 text-center ${FORM.helper}`}>{t("home.revenueRequiredHint")}</p>
             )}
           </>
         )}
 
-        {/* Flexible: clock in/out */}
-        {!isFixedSchedule && (jobs.length > 0 || activeSession) && (
-          <button
-            onClick={activeSession ? handleClockOut : handleClockIn}
-            disabled={submitting || (!activeSession && !selectedJobId) || (activeSession ? clockOutDisabled : false)}
-            className={`w-full py-3.5 rounded-xl text-base font-semibold tracking-wide transition-all mt-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-              activeSession
-                ? "bg-red-600 hover:bg-red-700 active:bg-red-800"
-                : "bg-blue-600 hover:bg-blue-700 active:bg-blue-800"
-            }`}
-          >
-            {submitting ? t("common.loading") : activeSession ? t("home.clockOut") : t("home.clockIn")}
-          </button>
-        )}
+        {/* 最近紀錄 */}
+        <div className="mt-8">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <h2 className={TYPE.sectionLabel}>{t("home.recent")}</h2>
+            {recent.length > 0 && (
+              <Link href="/records" className={`${TYPE.control} text-blue-400 hover:text-blue-300 transition-colors`}>
+                {t("home.viewMore")} →
+              </Link>
+            )}
+          </div>
 
-        {clockError && (
-          <p className="text-xs text-center text-red-400 mt-2">{clockError}</p>
-        )}
-        {!submitting && !submittingFixed && !clockError &&
-          ((activeSession ? clockOutDisabled : isFixedSchedule && fixedIsCommission && (selectedJob?.commissionRequired ?? false) && !dailyRevenue)) && (
-          <p className="text-xs text-center text-gray-500 mt-2">{t("home.revenueRequiredHint")}</p>
-        )}
-
-        {/* Recent sessions */}
-        {recentSessions.length > 0 && !activeSession && (
-          <div className="mt-8">
-            <h2 className="text-gray-400 text-xs uppercase tracking-wide mb-3">{t("home.recent")}</h2>
-            <div className="space-y-1">
-              {recentSessions.map((session) => {
+          {recent.length === 0 ? (
+            <div className={`${SURFACE.card} ${RADIUS.card} px-6 py-10 text-center`}>
+              <svg className="w-10 h-10 mx-auto text-gray-600" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+                <path strokeLinecap="round" d="M9.5 9h5M9.5 13h5M9.5 17h3" />
+              </svg>
+              <p className="mt-3 text-[15px] font-semibold">{t("home.empty.title")}</p>
+              <p className="mt-1 text-[13px] text-gray-500">{t("home.empty.desc")}</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {recent.map((session) => {
+                const done = session.clockOut !== null;
                 const duration = totalWorkMs(session) ?? 0;
                 const net = calcSessionIncome(session, taxRate);
                 return (
-                  <div key={session.id} className="bg-gray-800 rounded-xl p-4">
-                    <p className="font-medium">{session.job.name}</p>
-                    <div className="mt-2 grid grid-cols-2 gap-y-1 items-center">
-                      <p className="text-gray-400 text-sm">
-                        {fmtTime(session.clockIn)}
-                        {session.clockOut && <> — {fmtTime(session.clockOut)}</>}
-                      </p>
-                      <p className="font-mono text-gray-300 text-sm text-right">{formatDuration(duration)}</p>
-                      <p className="text-gray-400 text-sm">{fmtDateWeekday(session.clockIn)}</p>
-                      <p className="text-green-400 text-sm text-right">
-                        {net !== null ? `$${net.toFixed(2)}` : ""}
-                      </p>
+                  <Link
+                    key={session.id}
+                    href="/records"
+                    className={`block ${SURFACE.card} ${RADIUS.cell} px-3.5 py-3 ${SURFACE.hover} active:scale-[0.98] transition-all duration-150`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[15px] font-semibold leading-5 truncate">{session.job.name}</p>
+                      <span
+                        className={`shrink-0 inline-flex items-center gap-1 px-1.5 border ${RADIUS.pill} ${TYPE.badgeLabel} ${
+                          done
+                            ? "bg-blue-500/10 text-blue-300 border-blue-500/25"
+                            : "bg-amber-500/10 text-amber-300 border-amber-500/25"
+                        }`}
+                      >
+                        {done ? "✓" : "⚠"} {t(done ? "home.badge.done" : "home.badge.unfinished")}
+                      </span>
+                    </div>
+                    <p className={`mt-0.5 ${TYPE.rowMeta}`}>
+                      {fmtDateWeekday(session.clockIn)} · {fmtTime(session.clockIn)}
+                      {session.clockOut ? ` – ${fmtTime(session.clockOut)}` : ""}
+                    </p>
+                    <div className="mt-2 flex items-center gap-3">
+                      <span className={`inline-flex items-center gap-1 ${TYPE.rowValue} text-gray-300`}>
+                        <ClockIcon />
+                        {done ? formatHoursMinutes(duration) : "—"}
+                      </span>
+                      <span className={`inline-flex items-center gap-1 ${TYPE.rowValue} text-emerald-400`}>
+                        <MoneyIcon />
+                        {net !== null ? money(net) : "—"}
+                      </span>
                     </div>
                     {session.notes && (
-                      <p className="text-gray-500 text-xs mt-1 truncate">{session.notes}</p>
+                      <p className="mt-2 text-[12px] leading-4 text-gray-400 truncate">{session.notes}</p>
                     )}
-                  </div>
+                  </Link>
                 );
               })}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </main>
   );
