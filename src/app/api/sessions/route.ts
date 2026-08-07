@@ -38,11 +38,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "x-device-id required" }, { status: 400 });
   }
 
-  const { jobId, clockIn, clockOut, isPublicHoliday, dailyRevenue, notes } = await req.json();
+  const { jobId, clockIn, clockOut, isPublicHoliday, dailyRevenue, notes, breakMinutes } = await req.json();
   if (!jobId) return NextResponse.json({ error: "jobId required" }, { status: 400 });
 
   if (clockIn && clockOut && new Date(clockOut) <= new Date(clockIn)) {
     return NextResponse.json({ error: "clockOut must be after clockIn" }, { status: 400 });
+  }
+
+  if (breakMinutes != null && (typeof breakMinutes !== "number" || breakMinutes < 0)) {
+    return NextResponse.json({ error: "breakMinutes must be a non-negative number" }, { status: 400 });
   }
 
   // Only block concurrent active session if this is a real clock-in (no clockIn provided)
@@ -68,6 +72,7 @@ export async function POST(req: NextRequest) {
       clockOut: clockOut ? new Date(clockOut) : undefined,
       isPublicHoliday: isPublicHoliday ?? false,
       dailyRevenue: dailyRevenue ?? null,
+      breakMinutes: breakMinutes ?? null,
       notes: typeof notes === "string" && notes.trim() !== "" ? notes.trim() : null,
     },
     include: { job: { include: { overtimeTiers: { orderBy: { afterHours: "asc" } } } }, breaks: true },

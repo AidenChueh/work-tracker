@@ -70,12 +70,17 @@ function setFetch(jobs: Job[], sessions: WorkSession[]) {
   }) as unknown as typeof fetch;
 }
 
+async function openEditForm() {
+  fireEvent.click(await screen.findByLabelText("更多操作"));
+  fireEvent.click(screen.getByText("編輯"));
+}
+
 describe("RecordsPage — 編輯紀錄休息欄位", () => {
   it("時薪制工作的紀錄，編輯時顯示休息時間欄位", async () => {
     const job = makeJob();
     setFetch([job], [makeSession(job)]);
     render(<RecordsPage />);
-    fireEvent.click(await screen.findByText("編輯"));
+    await openEditForm();
     expect(screen.getByText("休息時間（分鐘）")).toBeInTheDocument();
   });
 
@@ -83,9 +88,22 @@ describe("RecordsPage — 編輯紀錄休息欄位", () => {
     const job = makeJob({ hourlyRate: null, commissionPercentage: 0.1 });
     setFetch([job], [makeSession(job, { dailyRevenue: 500 })]);
     render(<RecordsPage />);
-    fireEvent.click(await screen.findByText("編輯"));
+    await openEditForm();
     expect(screen.queryByText("休息時間（分鐘）")).not.toBeInTheDocument();
     expect(screen.getByText(/今日業績/)).toBeInTheDocument();
+  });
+});
+
+describe("RecordsPage — 薪資週收合", () => {
+  it("點擊薪資週 header 可收合，最新一週預設展開", async () => {
+    const job = makeJob();
+    setFetch([job], [makeSession(job)]);
+    render(<RecordsPage />);
+    const header = await screen.findByText(/工作 1 天/);
+    const button = header.closest("button")!;
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(button);
+    expect(button).toHaveAttribute("aria-expanded", "false");
   });
 });
 
@@ -94,7 +112,7 @@ describe("RecordsPage — 備註欄位", () => {
     const job = makeJob();
     setFetch([job], []);
     render(<RecordsPage />);
-    fireEvent.click(await screen.findByText("+ 新增"));
+    fireEvent.click(await screen.findByText("+ 新增打卡"));
     expect(screen.getByPlaceholderText("選填，記點什麼…")).toBeInTheDocument();
   });
 
@@ -102,7 +120,7 @@ describe("RecordsPage — 備註欄位", () => {
     const job = makeJob();
     setFetch([job], []);
     render(<RecordsPage />);
-    fireEvent.click(await screen.findByText("+ 新增"));
+    fireEvent.click(await screen.findByText("+ 新增打卡"));
     const d = new Date();
     const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     const dateInput = document.querySelector('input[type="date"]') as HTMLInputElement;
@@ -113,7 +131,7 @@ describe("RecordsPage — 備註欄位", () => {
     const job = makeJob();
     setFetch([job], [makeSession(job)]);
     render(<RecordsPage />);
-    fireEvent.click(await screen.findByText("編輯"));
+    await openEditForm();
     expect(screen.getByPlaceholderText("選填，記點什麼…")).toBeInTheDocument();
   });
 

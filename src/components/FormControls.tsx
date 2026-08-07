@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode, type InputHTMLAttributes, type SelectHTMLAttributes } from "react";
+import { useState, type ReactNode, type InputHTMLAttributes, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { FORM } from "@/lib/theme";
 
 export function Spinner() {
@@ -65,15 +65,39 @@ type TextFieldProps = InputHTMLAttributes<HTMLInputElement> & {
   error?: string;
   hint?: string;
   small?: boolean;
+  prefix?: string;
 };
 
-export function TextField({ label, required, error, hint, small, className, ...props }: TextFieldProps) {
+export function TextField({ label, required, error, hint, small, prefix, className, ...props }: TextFieldProps) {
+  const input = (
+    <input
+      {...props}
+      className={`${small ? FORM.inputSm : FORM.input} ${prefix ? "pl-8" : ""} ${error ? FORM.inputError : ""} ${className ?? ""}`}
+    />
+  );
   return (
     <FieldShell label={label} required={required} error={error} hint={hint}>
-      <input
-        {...props}
-        className={`${small ? FORM.inputSm : FORM.input} ${error ? FORM.inputError : ""} ${className ?? ""}`}
-      />
+      {prefix ? (
+        <div className="relative">
+          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[15px] text-gray-400 pointer-events-none">{prefix}</span>
+          {input}
+        </div>
+      ) : input}
+    </FieldShell>
+  );
+}
+
+type TextAreaFieldProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
+  label?: string;
+  required?: boolean;
+  error?: string;
+  hint?: string;
+};
+
+export function TextAreaField({ label, required, error, hint, className, ...props }: TextAreaFieldProps) {
+  return (
+    <FieldShell label={label} required={required} error={error} hint={hint}>
+      <textarea {...props} className={`${FORM.textarea} ${error ? FORM.inputError : ""} ${className ?? ""}`} />
     </FieldShell>
   );
 }

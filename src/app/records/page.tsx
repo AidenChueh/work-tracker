@@ -4,31 +4,26 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useDevice } from "@/hooks/useDevice";
 import { useTaxRate } from "@/hooks/useTaxRate";
 import { useLocale } from "@/hooks/useLocale";
-import { calcSessionIncome, calcSessionGross, payRules, totalWorkMs } from "@/lib/income";
-import { formatDuration, fmtTime, fmtDateWeekday } from "@/lib/format";
+import { useIncomeMode, type IncomeMode } from "@/hooks/useIncomeMode";
+import { RecordForm, draftFromSession, emptyDraft, type RecordDraft } from "@/components/RecordForm";
+import { calcSessionIncome, calcSessionGross, totalWorkMs } from "@/lib/income";
+import { formatHoursMinutes, fmtTime, fmtDateWeekday } from "@/lib/format";
 import { getCached, hasCached, setCached } from "@/lib/api-cache";
+import { INCOME, PERIOD, RADIUS, SPACE, SURFACE, TYPE, type PeriodKind } from "@/lib/theme";
 import type { Job, WorkSession } from "@/types/api";
 
 function localDateStr(date: Date): string {
   return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
 }
 
-function todayInputStr(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function toDatetimeLocal(isoString: string): string {
-  const d = new Date(isoString);
-  const offset = d.getTimezoneOffset();
-  const local = new Date(d.getTime() - offset * 60000);
-  return local.toISOString().slice(0, 16);
+function isWeeklyPeriod(job: Job): boolean {
+  return job.payFrequency === "weekly" && job.payDay != null;
 }
 
 function periodKeyForSession(session: WorkSession): string {
   const d = new Date(session.clockIn);
   const job = session.job;
-  if (job.payFrequency === "weekly" && job.payDay != null) {
+  if (isWeeklyPeriod(job)) {
     if (job.payWeekStart != null) {
       const dow = d.getDay();
       const daysFromStart = (dow - job.payWeekStart + 7) % 7;
@@ -38,14 +33,14 @@ function periodKeyForSession(session: WorkSession): string {
       const periodEnd = new Date(periodStart);
       periodEnd.setDate(periodStart.getDate() + 6);
       const periodEndDow = periodEnd.getDay();
-      let daysUntilPayday = (job.payDay - periodEndDow + 7) % 7 || 7;
+      const daysUntilPayday = (job.payDay! - periodEndDow + 7) % 7 || 7;
       const payday = new Date(periodEnd);
       payday.setDate(periodEnd.getDate() + daysUntilPayday);
       payday.setHours(0, 0, 0, 0);
       return localDateStr(payday);
     }
     const dow = d.getDay();
-    const diff = job.payDay <= dow ? 7 - (dow - job.payDay) : job.payDay - dow;
+    const diff = job.payDay! <= dow ? 7 - (dow - job.payDay!) : job.payDay! - dow;
     const payday = new Date(d);
     payday.setDate(d.getDate() + diff);
     payday.setHours(0, 0, 0, 0);
@@ -55,7 +50,7 @@ function periodKeyForSession(session: WorkSession): string {
 }
 
 function periodLabel(key: string, job: Job, locale: "zh" | "en"): string {
-  if (job.payFrequency === "weekly" && job.payDay != null) {
+  if (isWeeklyPeriod(job)) {
     const payday = new Date(key);
     const fmt = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`;
     if (job.payWeekStart != null) {
@@ -79,7 +74,39 @@ function periodLabel(key: string, job: Job, locale: "zh" | "en"): string {
   return locale === "en" ? `${monthsEn[parseInt(m) - 1]} ${y}` : `${y}年${m}月`;
 }
 
+function ClockIcon() {
+  return (
+    <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9" />
+      <path strokeLinecap="round" d="M12 7v5l3 2" />
+    </svg>
+  );
+}
+
+function MoneyIcon() {
+  return (
+    <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9" />
+      <path strokeLinecap="round" d="M14.5 9.5a2.5 2.5 0 0 0-2.5-1.5c-1.4 0-2.5.7-2.5 2s1.1 1.8 2.5 2 2.5.7 2.5 2-1.1 2-2.5 2a2.5 2.5 0 0 1-2.5-1.5M12 6.5v11" />
+    </svg>
+  );
+}
+
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      className={`w-4 h-4 shrink-0 text-gray-500 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
+      fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+    </svg>
+  );
+}
+
 type FilterPeriod = "all" | "week" | "month";
+type Editor =
+  | { mode: "add"; draft: RecordDraft }
+  | { mode: "edit"; session: WorkSession; draft: RecordDraft };
 
 export default function RecordsPage() {
   const { deviceId, loaded } = useDevice();
@@ -88,31 +115,13 @@ export default function RecordsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const taxRate = useTaxRate();
+  const [incomeMode, setIncomeMode] = useIncomeMode();
 
   const [filterJobId, setFilterJobId] = useState<string>("");
   const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>("week");
-
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [addJobId, setAddJobId] = useState("");
-  const [addDate, setAddDate] = useState(todayInputStr());
-  const [addStart, setAddStart] = useState("");
-  const [addEnd, setAddEnd] = useState("");
-  const [addDailyRevenue, setAddDailyRevenue] = useState("");
-  const [addNotes, setAddNotes] = useState("");
-  const [addSubmitting, setAddSubmitting] = useState(false);
-  const [addError, setAddError] = useState("");
-
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editClockInDate, setEditClockInDate] = useState("");
-  const [editClockInTime, setEditClockInTime] = useState("");
-  const [editClockOutDate, setEditClockOutDate] = useState("");
-  const [editClockOutTime, setEditClockOutTime] = useState("");
-  const [editDailyRevenue, setEditDailyRevenue] = useState("");
-  const [editBreakMinutes, setEditBreakMinutes] = useState("");
-  const [editNotes, setEditNotes] = useState("");
-  const [editSubmitting, setEditSubmitting] = useState(false);
-  const [addTimeError, setAddTimeError] = useState("");
-  const [editTimeError, setEditTimeError] = useState("");
+  const [editor, setEditor] = useState<Editor | null>(null);
+  const [menuId, setMenuId] = useState<string | null>(null);
+  const [collapseOverrides, setCollapseOverrides] = useState<Set<string>>(new Set());
 
   const fetchJobs = useCallback(async (id: string) => {
     const res = await fetch("/api/jobs", { headers: { "x-device-id": id } });
@@ -120,7 +129,6 @@ export default function RecordsPage() {
       const jobData: Job[] = await res.json();
       setJobs(jobData);
       setCached(`jobs:${id}`, jobData);
-      if (jobData.length === 1) setAddJobId(jobData[0].id);
     }
   }, []);
 
@@ -147,10 +155,7 @@ export default function RecordsPage() {
   useEffect(() => {
     if (!deviceId || !loaded) return;
     const cachedJobs = getCached<Job[]>(`jobs:${deviceId}`);
-    if (cachedJobs) {
-      setJobs(cachedJobs);
-      if (cachedJobs.length === 1) setAddJobId(cachedJobs[0].id);
-    }
+    if (cachedJobs) setJobs(cachedJobs);
     fetchJobs(deviceId);
   }, [deviceId, loaded, fetchJobs]);
 
@@ -189,8 +194,8 @@ export default function RecordsPage() {
         end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
       }
       result = result.filter((s) => {
-        const t = new Date(s.clockIn).getTime();
-        return t >= start.getTime() && t <= end.getTime();
+        const time = new Date(s.clockIn).getTime();
+        return time >= start.getTime() && time <= end.getTime();
       });
     }
     return result;
@@ -208,109 +213,32 @@ export default function RecordsPage() {
     return byJob;
   }, [filteredSessions]);
 
-  const selectedAddJob = jobs.find((j) => j.id === addJobId);
-  const isAddCommission = selectedAddJob?.commissionPercentage != null;
+  const amountOf = useCallback(
+    (s: WorkSession) => (incomeMode === "net" ? calcSessionIncome(s, taxRate) : calcSessionGross(s)),
+    [incomeMode, taxRate]
+  );
 
-  useEffect(() => {
-    if (!selectedAddJob) return;
-    if (
-      selectedAddJob.scheduleType === "fixed" &&
-      selectedAddJob.fixedClockIn &&
-      selectedAddJob.fixedClockOut
-    ) {
-      setAddStart(selectedAddJob.fixedClockIn);
-      setAddEnd(selectedAddJob.fixedClockOut);
-    }
-  }, [selectedAddJob]);
-
-  async function handleAdd(e: React.FormEvent) {
-    e.preventDefault();
-    if (!deviceId || !addJobId || !addDate || !addStart || !addEnd) return;
-    const inDate = new Date(`${addDate}T${addStart}`);
-    const outDate = new Date(`${addDate}T${addEnd}`);
-    // 下班早於上班視為跨夜班，落在隔天
-    if (outDate < inDate) outDate.setDate(outDate.getDate() + 1);
-    if (outDate <= inDate) {
-      setAddTimeError(t("records.timeError"));
-      return;
-    }
-    setAddTimeError("");
-    setAddError("");
-    setAddSubmitting(true);
-    const body: Record<string, unknown> = { jobId: addJobId, clockIn: inDate.toISOString(), clockOut: outDate.toISOString() };
-    if (isAddCommission && addDailyRevenue) body.dailyRevenue = parseFloat(addDailyRevenue);
-    if (addNotes.trim()) body.notes = addNotes.trim();
-    const res = await fetch("/api/sessions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-device-id": deviceId },
-      body: JSON.stringify(body),
-    });
-    if (res.ok) {
-      await fetchSessions(deviceId, filterPeriod);
-      setShowAddForm(false);
-      setAddDate(todayInputStr());
-      setAddStart("");
-      setAddEnd("");
-      setAddDailyRevenue("");
-      setAddNotes("");
-    } else {
-      setAddError(t("home.addFailed"));
-    }
-    setAddSubmitting(false);
+  async function refresh() {
+    if (deviceId) await fetchSessions(deviceId, filterPeriod);
   }
 
-  function startEdit(s: WorkSession) {
-    setEditingId(s.id);
-    const inLocal = toDatetimeLocal(s.clockIn);
-    setEditClockInDate(inLocal.slice(0, 10));
-    setEditClockInTime(inLocal.slice(11, 16));
-    const outLocal = s.clockOut ? toDatetimeLocal(s.clockOut) : inLocal;
-    setEditClockOutDate(outLocal.slice(0, 10));
-    setEditClockOutTime(outLocal.slice(11, 16));
-    setEditDailyRevenue(s.dailyRevenue != null ? String(s.dailyRevenue) : "");
-    setEditBreakMinutes(s.breakMinutes != null ? String(s.breakMinutes) : "");
-    setEditNotes(s.notes ?? "");
+  function openAdd() {
+    setMenuId(null);
+    setEditor({ mode: "add", draft: emptyDraft(jobs) });
   }
 
-  async function handleEdit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!deviceId || !editingId) return;
-    if (editClockInDate && editClockInTime && editClockOutDate && editClockOutTime) {
-      const inDate = new Date(`${editClockInDate}T${editClockInTime}`);
-      const outDate = new Date(`${editClockOutDate}T${editClockOutTime}`);
-      if (outDate <= inDate) {
-        setEditTimeError(t("records.timeError"));
-        return;
-      }
-    }
-    setEditTimeError("");
-    setEditSubmitting(true);
-    const editing = sessions.find((s) => s.id === editingId);
-    const body: Record<string, unknown> = {};
-    if (editClockInDate && editClockInTime)
-      body.clockIn = new Date(`${editClockInDate}T${editClockInTime}`).toISOString();
-    if (editClockOutDate && editClockOutTime)
-      body.clockOut = new Date(`${editClockOutDate}T${editClockOutTime}`).toISOString();
-    if (editing?.job.commissionPercentage != null) {
-      body.dailyRevenue = editDailyRevenue === "" ? null : parseFloat(editDailyRevenue);
-    } else if (editing) {
-      const bm = parseInt(editBreakMinutes);
-      body.breakMinutes = editBreakMinutes.trim() === "" || isNaN(bm) ? null : Math.max(0, bm);
-    }
-    body.notes = editNotes.trim() === "" ? null : editNotes.trim();
-    const res = await fetch(`/api/sessions/${editingId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", "x-device-id": deviceId },
-      body: JSON.stringify(body),
-    });
-    if (res.ok) {
-      await fetchSessions(deviceId, filterPeriod);
-      setEditingId(null);
-    }
-    setEditSubmitting(false);
+  function openEdit(s: WorkSession) {
+    setMenuId(null);
+    setEditor({ mode: "edit", session: s, draft: draftFromSession(s) });
+  }
+
+  function openDuplicate(s: WorkSession) {
+    setMenuId(null);
+    setEditor({ mode: "add", draft: draftFromSession(s) });
   }
 
   async function handleDelete(id: string) {
+    setMenuId(null);
     if (!deviceId) return;
     if (!window.confirm(t("records.deleteConfirm"))) return;
     const res = await fetch(`/api/sessions/${id}`, {
@@ -335,398 +263,292 @@ export default function RecordsPage() {
   }
 
   const jobsWithSessions = jobs.filter((j) => grouped.has(j.id));
+  const showAddForm = editor?.mode === "add";
 
   return (
     <main className="bg-gray-950 text-white">
-      <div className="max-w-md mx-auto px-4 py-6">
+      <div className={`max-w-md mx-auto ${SPACE.page}`}>
 
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-lg font-semibold">{t("records.title")}</h1>
+        <div className={`flex items-center justify-between gap-3 ${SPACE.afterHeader}`}>
+          <h1 className={TYPE.pageTitle}>{t("records.title")}</h1>
           <button
-            onClick={() => setShowAddForm((v) => !v)}
-            className="text-sm px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+            onClick={() => (showAddForm ? setEditor(null) : openAdd())}
+            className={`shrink-0 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white ${TYPE.control} px-3.5 py-1.5 ${RADIUS.chip} transition-all duration-150`}
           >
             {showAddForm ? t("common.cancel") : t("records.addBtn")}
           </button>
         </div>
 
         {showAddForm && (
-          <form onSubmit={handleAdd} className="bg-gray-800 rounded-2xl p-3 sm:p-4 mb-4 space-y-3">
-            <p className="text-sm font-medium text-gray-300">{t("records.formTitle")}</p>
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">{t("records.work")}</label>
-              <select
-                value={addJobId}
-                onChange={(e) => setAddJobId(e.target.value)}
-                required
-                className="block w-full max-w-full min-w-0 box-border bg-gray-700 rounded-xl px-3 py-2 text-sm text-white"
-              >
-                <option value="">{t("records.selectWork")}</option>
-                {jobs.map((j) => (
-                  <option key={j.id} value={j.id}>{j.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">{t("records.date")}</label>
-              <input
-                type="date"
-                value={addDate}
-                onChange={(e) => setAddDate(e.target.value)}
-                required
-                className="block w-full max-w-full min-w-0 box-border bg-gray-700 rounded-xl px-3 py-2 text-sm text-white"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="min-w-0">
-                <label className="text-xs text-gray-400 block mb-1">{t("records.startTime")}</label>
-                <input
-                  type="time"
-                  value={addStart}
-                  onChange={(e) => setAddStart(e.target.value)}
-                  required
-                  className="block w-full max-w-full min-w-0 box-border bg-gray-700 rounded-xl px-2 py-2 text-sm text-white"
-                />
-              </div>
-              <div className="min-w-0">
-                <label className="text-xs text-gray-400 block mb-1">{t("records.endTime")}</label>
-                <input
-                  type="time"
-                  value={addEnd}
-                  onChange={(e) => setAddEnd(e.target.value)}
-                  required
-                  className="block w-full max-w-full min-w-0 box-border bg-gray-700 rounded-xl px-2 py-2 text-sm text-white"
-                />
-              </div>
-            </div>
-            {isAddCommission && (
-              <div>
-                <label className="text-xs text-gray-400 block mb-1">
-                  {t("records.todayRevenue")}
-                  {selectedAddJob?.commissionRequired
-                    ? <span className="text-red-400 ml-1">{t("common.required")}</span>
-                    : <span className="text-gray-500 ml-1">{t("common.optional")}</span>
-                  }
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                  <input
-                    type="number"
-                    value={addDailyRevenue}
-                    onChange={(e) => setAddDailyRevenue(e.target.value)}
-                    onFocus={(e) => e.target.select()}
-                    placeholder="0.00"
-                    min="0"
-                    step="0.01"
-                    required={selectedAddJob?.commissionRequired}
-                    className="block w-full max-w-full min-w-0 box-border bg-gray-700 rounded-xl pl-7 pr-3 py-2 text-sm text-white placeholder-gray-500"
-                  />
-                </div>
-              </div>
-            )}
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">
-                {t("common.notes")}
-                <span className="text-gray-500 ml-1">{t("common.optional")}</span>
-              </label>
-              <textarea
-                value={addNotes}
-                onChange={(e) => setAddNotes(e.target.value)}
-                placeholder={t("common.notesPlaceholder")}
-                rows={2}
-                className="block w-full max-w-full min-w-0 box-border bg-gray-700 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-500 resize-none"
-              />
-            </div>
-            {(addTimeError || addError) && (
-              <p className="text-xs text-red-400">{addTimeError || addError}</p>
-            )}
-            <div className="flex gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setShowAddForm(false)}
-                className="flex-1 py-2 rounded-xl bg-gray-700 hover:bg-gray-600 text-sm font-medium transition-colors"
-              >
-                {t("common.cancel")}
-              </button>
-              <button
-                type="submit"
-                disabled={addSubmitting}
-                className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-sm font-medium transition-colors disabled:opacity-50"
-              >
-                {addSubmitting ? t("common.saving") : t("common.save")}
-              </button>
-            </div>
-          </form>
+          <RecordForm
+            mode="add"
+            jobs={jobs}
+            initial={editor.draft}
+            deviceId={deviceId!}
+            onSaved={async () => {
+              await refresh();
+              setEditor(null);
+            }}
+            onCancel={() => setEditor(null)}
+          />
         )}
 
         {!showAddForm && (
           <>
             {/* Filters */}
-            <div className="mb-4 space-y-2">
-              <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-                <button
-                  onClick={() => setFilterJobId("")}
-                  className={`shrink-0 px-3 py-1.5 rounded-xl text-sm transition-colors ${
-                    filterJobId === "" ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"
-                  }`}
-                >
-                  {t("records.filterAll")}
-                </button>
-                {jobs.map((j) => (
-                  <button
-                    key={j.id}
-                    onClick={() => setFilterJobId(j.id)}
-                    className={`shrink-0 px-3 py-1.5 rounded-xl text-sm transition-colors ${
-                      filterJobId === j.id ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"
-                    }`}
-                  >
-                    {j.name}
-                  </button>
-                ))}
+            <div className="mb-5 space-y-3">
+              <div>
+                <p className={TYPE.sectionLabel}>{t("records.filterJob")}</p>
+                <div className={`mt-1.5 flex gap-0.5 p-0.5 overflow-x-auto scrollbar-hide ${RADIUS.cell} ${SURFACE.segment}`}>
+                  {[{ id: "", name: t("records.filterAll") }, ...jobs].map((j) => (
+                    <button
+                      key={j.id}
+                      onClick={() => setFilterJobId(j.id)}
+                      className={`shrink-0 h-8 px-3 ${RADIUS.chip} ${TYPE.control} transition-colors ${
+                        filterJobId === j.id ? SURFACE.segmentOn : SURFACE.segmentOff
+                      }`}
+                    >
+                      {j.name}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="flex gap-2">
-                {(["all", "week", "month"] as const).map((period) => (
-                  <button
-                    key={period}
-                    onClick={() => setFilterPeriod(period)}
-                    className={`flex-1 py-1.5 rounded-xl text-sm transition-colors ${
-                      filterPeriod === period ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"
-                    }`}
-                  >
-                    {period === "all" ? t("records.filterAll") : period === "week" ? t("records.filterWeek") : t("records.filterMonth")}
-                  </button>
-                ))}
+
+              <div>
+                <div className="flex items-center justify-between gap-3">
+                  <p className={TYPE.sectionLabel}>{t("records.filterPeriod")}</p>
+                  <div className={`flex items-center gap-0.5 p-0.5 ${RADIUS.chip} ${SURFACE.segment}`}>
+                    {(["net", "gross"] as IncomeMode[]).map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => setIncomeMode(m)}
+                        className={`px-2 py-1 ${RADIUS.pill} ${TYPE.segment} transition-colors ${
+                          incomeMode === m ? SURFACE.segmentOn : SURFACE.segmentOff
+                        }`}
+                      >
+                        {t(`cal.mode.${m}`)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className={`mt-1.5 flex gap-0.5 p-0.5 ${RADIUS.cell} ${SURFACE.segment}`}>
+                  {(["all", "week", "month"] as const).map((period) => (
+                    <button
+                      key={period}
+                      onClick={() => setFilterPeriod(period)}
+                      className={`flex-1 h-8 ${RADIUS.chip} ${TYPE.control} transition-colors ${
+                        filterPeriod === period ? SURFACE.segmentOn : SURFACE.segmentOff
+                      }`}
+                    >
+                      {period === "all" ? t("records.filterAll") : period === "week" ? t("records.filterWeek") : t("records.filterMonth")}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
             {jobsWithSessions.length === 0 ? (
-              <div className="flex items-center justify-center py-20">
-                <p className="text-gray-500 text-sm">{t("records.empty")}</p>
-              </div>
+              completedSessions.length === 0 && filterPeriod === "all" && !filterJobId ? (
+                <div className={`${SURFACE.card} ${RADIUS.card} px-6 py-10 text-center`}>
+                  <svg className="w-10 h-10 mx-auto text-gray-600" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+                    <path strokeLinecap="round" d="M9.5 9h5M9.5 13h5M9.5 17h3" />
+                  </svg>
+                  <p className="mt-3 text-[15px] font-semibold">{t("records.empty.title")}</p>
+                  <p className="mt-1 text-[13px] text-gray-500">{t("records.empty.desc")}</p>
+                  <button
+                    onClick={openAdd}
+                    className={`mt-5 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white ${TYPE.control} px-4 py-2 ${RADIUS.chip} transition-all duration-150`}
+                  >
+                    {t("records.empty.cta")}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center gap-3 py-20">
+                  <p className="text-gray-500 text-sm">{t("records.empty")}</p>
+                  <button
+                    onClick={() => { setFilterPeriod("all"); setFilterJobId(""); }}
+                    className={`px-3.5 py-2 bg-gray-800 hover:bg-gray-700 active:scale-[0.98] text-gray-300 ${TYPE.control} ${RADIUS.chip} transition-all duration-150`}
+                  >
+                    {t("records.showAll")}
+                  </button>
+                </div>
+              )
             ) : (
-              jobsWithSessions.map((job) => {
-                const periodMap = grouped.get(job.id)!;
-                const sortedPeriodKeys = Array.from(periodMap.keys()).sort((a, b) => {
-                  const dateA = new Date(a.includes("-") && a.split("-").length === 3 ? a : `${a}-01`);
-                  const dateB = new Date(b.includes("-") && b.split("-").length === 3 ? b : `${b}-01`);
-                  return dateB.getTime() - dateA.getTime();
-                });
+              <div className="space-y-4">
+                {jobsWithSessions.map((job) => {
+                  const periodMap = grouped.get(job.id)!;
+                  const sortedPeriodKeys = Array.from(periodMap.keys()).sort((a, b) => {
+                    const dateA = new Date(a.split("-").length === 3 ? a : `${a}-01`);
+                    const dateB = new Date(b.split("-").length === 3 ? b : `${b}-01`);
+                    return dateB.getTime() - dateA.getTime();
+                  });
+                  const kind: PeriodKind = isWeeklyPeriod(job) ? "weekly" : "monthly";
+                  const periodStyle = PERIOD[kind];
 
-                return (
-                  <div key={job.id} className="bg-gray-800 rounded-2xl p-4 mb-4">
-                    <h2 className="text-base font-semibold mb-3">{job.name}</h2>
+                  return (
+                    <div key={job.id} className={`${SURFACE.card} ${RADIUS.card} ${SPACE.card}`}>
+                      <h2 className={`${TYPE.rowTitle} mb-4`}>{job.name}</h2>
 
-                    {sortedPeriodKeys.map((periodKey) => {
-                      const periodSessions = periodMap.get(periodKey)!.sort(
-                        (a, b) => new Date(b.clockIn).getTime() - new Date(a.clockIn).getTime()
-                      );
-                      const label = periodLabel(periodKey, job, locale);
-                      const subLabel = job.payFrequency === "weekly" && job.payDay != null
-                        ? t("records.payDayLabel", { date: `${new Date(periodKey).getMonth() + 1}/${new Date(periodKey).getDate()}` })
-                        : null;
-                      const periodGross = periodSessions.reduce((sum, s) => sum + (calcSessionGross(s) ?? 0), 0);
-                      const periodNet = periodSessions.reduce((sum, s) => sum + (calcSessionIncome(s, taxRate) ?? 0), 0);
-                      const hasTax = taxRate > 0 && periodSessions.some((s) => s.job.taxEnabled);
-                      const hasIncome = periodSessions.some((s) => calcSessionGross(s) !== null);
+                      <div className={SPACE.group}>
+                        {sortedPeriodKeys.map((periodKey, index) => {
+                          const periodSessions = periodMap.get(periodKey)!.sort(
+                            (a, b) => new Date(b.clockIn).getTime() - new Date(a.clockIn).getTime()
+                          );
+                          const openKey = `${job.id}:${periodKey}`;
+                          const isOpen = collapseOverrides.has(openKey) ? index !== 0 : index === 0;
+                          const label = periodLabel(periodKey, job, locale);
+                          const payday = new Date(periodKey);
+                          const subLabel = isWeeklyPeriod(job)
+                            ? t("records.payDayLabel", { date: `${payday.getMonth() + 1}/${payday.getDate()}` })
+                            : null;
+                          const total = periodSessions.reduce((sum, s) => sum + (amountOf(s) ?? 0), 0);
+                          const workMs = periodSessions.reduce((sum, s) => sum + (totalWorkMs(s) ?? 0), 0);
+                          const days = new Set(periodSessions.map((s) => localDateStr(new Date(s.clockIn)))).size;
+                          const hasIncome = periodSessions.some((s) => calcSessionGross(s) !== null);
 
-                      return (
-                        <div key={periodKey} className="mb-4 last:mb-0">
-                          <div className="flex items-center justify-between mb-2">
-                            <div>
-                              <span className="text-sm text-gray-300 font-medium">{label}</span>
-                              {subLabel && (
-                                <span className="text-xs text-gray-500 ml-2">{subLabel}</span>
-                              )}
-                            </div>
-                            {hasIncome && (
-                              <div className="text-right">
-                                {hasTax ? (
-                                  <>
-                                    <div className="text-xs text-gray-500">{t("records.preTax", { amount: periodGross.toFixed(2) })}</div>
-                                    <div className="text-sm font-semibold text-green-400">${periodNet.toFixed(2)}</div>
-                                  </>
-                                ) : (
-                                  <span className="text-sm font-semibold text-green-400">${periodGross.toFixed(2)}</span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="space-y-2">
-                            {periodSessions.map((s) => {
-                              if (editingId === s.id) {
-                                const isEditCommission = s.job.commissionPercentage != null;
-                                return (
-                                  <form
-                                    key={s.id}
-                                    onSubmit={handleEdit}
-                                    className="bg-gray-700 rounded-xl p-2.5 sm:p-3 space-y-2"
-                                  >
-                                    <div>
-                                      <label className="text-xs text-gray-400 block mb-1">{t("records.startTime")}</label>
-                                      <div className="grid grid-cols-2 gap-1.5">
-                                        <div className="min-w-0">
-                                          <input
-                                            type="date"
-                                            value={editClockInDate}
-                                            onChange={(e) => {
-                                              const v = e.target.value;
-                                              setEditClockInDate(v);
-                                              setEditClockOutDate(v);
-                                            }}
-                                            required
-                                            className="block w-full max-w-full min-w-0 box-border bg-gray-600 rounded-lg px-1.5 py-1.5 text-xs text-white"
-                                          />
-                                        </div>
-                                        <div className="min-w-0">
-                                          <input
-                                            type="time"
-                                            value={editClockInTime}
-                                            onChange={(e) => setEditClockInTime(e.target.value)}
-                                            required
-                                            className="block w-full max-w-full min-w-0 box-border bg-gray-600 rounded-lg px-1.5 py-1.5 text-xs text-white"
-                                          />
-                                        </div>
-                                      </div>
+                          return (
+                            <div key={periodKey}>
+                              <button
+                                onClick={() =>
+                                  setCollapseOverrides((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(openKey)) next.delete(openKey);
+                                    else next.add(openKey);
+                                    return next;
+                                  })
+                                }
+                                aria-expanded={isOpen}
+                                className="w-full text-left active:opacity-70 transition-opacity"
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className={`shrink-0 px-1.5 border ${RADIUS.pill} ${TYPE.badgeLabel} ${periodStyle.badge}`}>
+                                        {t(`cal.period.${kind}`)}
+                                      </span>
+                                      <span className={`${TYPE.rowTitle} truncate`}>{label}</span>
                                     </div>
-                                    <div>
-                                      <label className="text-xs text-gray-400 block mb-1">{t("records.endTime")}</label>
-                                      <div className="grid grid-cols-2 gap-1.5">
-                                        <div className="min-w-0">
-                                          <input
-                                            type="date"
-                                            value={editClockOutDate}
-                                            onChange={(e) => setEditClockOutDate(e.target.value)}
-                                            required
-                                            className="block w-full max-w-full min-w-0 box-border bg-gray-600 rounded-lg px-1.5 py-1.5 text-xs text-white"
-                                          />
-                                        </div>
-                                        <div className="min-w-0">
-                                          <input
-                                            type="time"
-                                            value={editClockOutTime}
-                                            onChange={(e) => setEditClockOutTime(e.target.value)}
-                                            required
-                                            className="block w-full max-w-full min-w-0 box-border bg-gray-600 rounded-lg px-1.5 py-1.5 text-xs text-white"
-                                          />
-                                        </div>
-                                      </div>
-                                    </div>
-                                    {!isEditCommission && (
-                                      <div>
-                                        <label className="text-xs text-gray-400 block mb-1">{t("records.breakMinutes")}</label>
-                                        <input
-                                          type="number"
-                                          value={editBreakMinutes}
-                                          onChange={(e) => setEditBreakMinutes(e.target.value)}
-                                          onFocus={(e) => e.target.select()}
-                                          placeholder={String(payRules(s).breakDuration ?? 0)}
-                                          min="0"
-                                          step="1"
-                                          className="block w-full max-w-full min-w-0 box-border bg-gray-600 rounded-lg px-2 py-1.5 text-xs text-white placeholder-gray-400"
-                                        />
-                                        <p className="text-[10px] text-gray-500 mt-0.5">{t("records.breakHint", { min: payRules(s).breakDuration ?? 0 })}</p>
-                                      </div>
-                                    )}
-                                    {isEditCommission && (
-                                      <div>
-                                        <label className="text-xs text-gray-400 block mb-1">
-                                          {t("records.todayRevenue")}
-                                          {s.job.commissionRequired
-                                            ? <span className="text-red-400 ml-1">{t("common.required")}</span>
-                                            : <span className="text-gray-500 ml-1">{t("common.optional")}</span>
-                                          }
-                                        </label>
-                                        <div className="relative">
-                                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
-                                          <input
-                                            type="number"
-                                            value={editDailyRevenue}
-                                            onChange={(e) => setEditDailyRevenue(e.target.value)}
-                                            onFocus={(e) => e.target.select()}
-                                            placeholder="0.00"
-                                            min="0"
-                                            step="0.01"
-                                            required={s.job.commissionRequired}
-                                            className="block w-full max-w-full min-w-0 box-border bg-gray-600 rounded-lg pl-6 pr-2 py-1.5 text-xs text-white placeholder-gray-400"
-                                          />
-                                        </div>
-                                      </div>
-                                    )}
-                                    <div>
-                                      <label className="text-xs text-gray-400 block mb-1">{t("common.notes")}</label>
-                                      <textarea
-                                        value={editNotes}
-                                        onChange={(e) => setEditNotes(e.target.value)}
-                                        placeholder={t("common.notesPlaceholder")}
-                                        rows={2}
-                                        className="block w-full max-w-full min-w-0 box-border bg-gray-600 rounded-lg px-2 py-1.5 text-xs text-white placeholder-gray-400 resize-none"
-                                      />
-                                    </div>
-                                    {editTimeError && (
-                                      <p className="text-xs text-red-400">{editTimeError}</p>
-                                    )}
-                                    <div className="flex gap-2">
-                                      <button
-                                        type="button"
-                                        onClick={() => setEditingId(null)}
-                                        className="flex-1 py-2 rounded-lg bg-gray-600 hover:bg-gray-500 text-xs font-medium transition-colors"
-                                      >
-                                        {t("common.cancel")}
-                                      </button>
-                                      <button
-                                        type="submit"
-                                        disabled={editSubmitting}
-                                        className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-medium transition-colors disabled:opacity-50"
-                                      >
-                                        {editSubmitting ? t("common.saving") : t("common.save")}
-                                      </button>
-                                    </div>
-                                  </form>
-                                );
-                              }
-
-                              const net = calcSessionIncome(s, taxRate);
-                              const duration = totalWorkMs(s) ?? 0;
-                              return (
-                                <div key={s.id} className="bg-gray-900 rounded-xl px-3 py-2.5">
-                                  <div className="grid grid-cols-2 gap-y-1 items-center mb-2">
-                                    <span className="text-sm text-white">
-                                      {fmtTime(s.clockIn)} – {s.clockOut ? fmtTime(s.clockOut) : t("records.inProgress")}
-                                    </span>
-                                    <span className="font-mono text-gray-300 text-sm text-right">{formatDuration(duration)}</span>
-                                    <span className="text-gray-400 text-sm">{fmtDateWeekday(s.clockIn)}</span>
-                                    <span className="text-sm font-semibold text-green-400 text-right">
-                                      {net !== null ? `$${net.toFixed(2)}` : t("records.commissionLabel")}
-                                    </span>
+                                    {subLabel && <p className={`mt-1 ${TYPE.rowMeta}`}>{subLabel}</p>}
                                   </div>
-                                  {s.notes && (
-                                    <p className="text-xs text-gray-400 mb-2 whitespace-pre-wrap break-words">{s.notes}</p>
-                                  )}
-                                  <div className="flex items-center justify-between">
-                                    <button
-                                      onClick={() => startEdit(s)}
-                                      className="text-sm text-blue-400 hover:text-blue-300 transition-colors px-3 py-1.5 -ml-2 rounded-lg hover:bg-blue-400/10"
-                                    >
-                                      {t("common.edit")}
-                                    </button>
-                                    <button
-                                      onClick={() => handleDelete(s.id)}
-                                      className="text-sm text-red-400 hover:text-red-300 transition-colors px-3 py-1.5 -mr-2 rounded-lg hover:bg-red-400/10"
-                                    >
-                                      {t("common.delete")}
-                                    </button>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    {hasIncome && (
+                                      <div className="text-right">
+                                        <p className={TYPE.statLabel}>{t(`cal.mode.${incomeMode}`)}</p>
+                                        <p className={`${TYPE.cardSubValue} ${INCOME.text}`}>${total.toFixed(2)}</p>
+                                      </div>
+                                    )}
+                                    <ChevronIcon open={isOpen} />
                                   </div>
                                 </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })
+                                <p className={`mt-2 flex items-center gap-2 ${TYPE.rowMeta} tabular-nums`}>
+                                  <span>{t("records.summaryDays", { days })}</span>
+                                  <span className="text-gray-700">·</span>
+                                  <span className="inline-flex items-center gap-1">
+                                    <ClockIcon />
+                                    {formatHoursMinutes(workMs)}
+                                  </span>
+                                </p>
+                              </button>
+
+                              <div className={`grid transition-[grid-template-rows] duration-200 ease-out ${isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+                                <div className="overflow-hidden">
+                                  <div className="pt-3 space-y-2">
+                                    {periodSessions.map((s) => {
+                                      if (editor?.mode === "edit" && editor.session.id === s.id) {
+                                        return (
+                                          <RecordForm
+                                            key={s.id}
+                                            mode="edit"
+                                            jobs={jobs}
+                                            session={s}
+                                            initial={editor.draft}
+                                            deviceId={deviceId!}
+                                            onSaved={async () => {
+                                              await refresh();
+                                              setEditor(null);
+                                            }}
+                                            onCancel={() => setEditor(null)}
+                                          />
+                                        );
+                                      }
+
+                                      const amount = amountOf(s);
+                                      const duration = totalWorkMs(s) ?? 0;
+                                      return (
+                                        <div
+                                          key={s.id}
+                                          className={`relative bg-gray-800/60 ${RADIUS.cell} transition-transform duration-150 active:scale-[0.98]`}
+                                        >
+                                          <button
+                                            onClick={() => openEdit(s)}
+                                            className={`w-full text-left px-3.5 py-3 pr-12 ${RADIUS.cell} ${SURFACE.hover} transition-colors`}
+                                          >
+                                            <p className={TYPE.cardSubValue}>
+                                              {fmtTime(s.clockIn)} – {s.clockOut ? fmtTime(s.clockOut) : t("records.inProgress")}
+                                            </p>
+                                            <p className={`mt-0.5 ${TYPE.rowMeta}`}>{fmtDateWeekday(s.clockIn)}</p>
+                                            <div className="mt-2 flex items-center gap-3">
+                                              <span className={`inline-flex items-center gap-1 ${TYPE.rowValue} text-gray-300`}>
+                                                <ClockIcon />
+                                                {formatHoursMinutes(duration)}
+                                              </span>
+                                              <span className={`inline-flex items-center gap-1 ${TYPE.rowValue} ${INCOME.text}`}>
+                                                <MoneyIcon />
+                                                {amount !== null ? `$${amount.toFixed(2)}` : t("records.commissionLabel")}
+                                              </span>
+                                            </div>
+                                            {s.notes && (
+                                              <p className="mt-2 text-[12px] leading-4 text-gray-400 whitespace-pre-wrap break-words">{s.notes}</p>
+                                            )}
+                                          </button>
+
+                                          <button
+                                            aria-label={t("records.more")}
+                                            onClick={() => setMenuId((prev) => (prev === s.id ? null : s.id))}
+                                            className={`absolute top-1.5 right-1.5 w-9 h-9 flex items-center justify-center ${RADIUS.chip} text-gray-500 hover:text-white hover:bg-gray-700 active:bg-gray-600 transition-colors`}
+                                          >
+                                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                                              <circle cx="5" cy="12" r="1.6" />
+                                              <circle cx="12" cy="12" r="1.6" />
+                                              <circle cx="19" cy="12" r="1.6" />
+                                            </svg>
+                                          </button>
+
+                                          {menuId === s.id && (
+                                            <>
+                                              <div className="fixed inset-0 z-10" onClick={() => setMenuId(null)} />
+                                              <div className={`absolute top-11 right-1.5 z-20 w-32 overflow-hidden bg-gray-800 border border-gray-700 ${RADIUS.cell} shadow-xl shadow-black/40`}>
+                                                {[
+                                                  { label: t("common.edit"), onClick: () => openEdit(s), tone: "text-gray-200" },
+                                                  { label: t("records.duplicate"), onClick: () => openDuplicate(s), tone: "text-gray-200" },
+                                                  { label: t("common.delete"), onClick: () => handleDelete(s.id), tone: "text-red-400" },
+                                                ].map((item) => (
+                                                  <button
+                                                    key={item.label}
+                                                    onClick={item.onClick}
+                                                    className={`w-full text-left px-3.5 py-2.5 ${TYPE.control} ${item.tone} hover:bg-gray-700 active:bg-gray-600 transition-colors`}
+                                                  >
+                                                    {item.label}
+                                                  </button>
+                                                ))}
+                                              </div>
+                                            </>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </>
         )}
