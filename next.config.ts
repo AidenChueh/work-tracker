@@ -12,12 +12,9 @@ function gitOut(cmd: string): string | null {
   }
 }
 
-// 版本號 = 1.0.<更新次數>，更新次數 = git commit 數扣掉初始建立 commit。
-// 與 package.json version 取較大值，避免 Vercel 淺層 clone 時 commit 數異常偏低。
-const pkgPatch = parseInt(pkg.version.split(".")[2] ?? "0", 10) || 0;
-const commitCount = parseInt(gitOut("git rev-list --count HEAD") ?? "0", 10);
-const patch = Math.max(commitCount > 1 ? commitCount - 1 : 0, pkgPatch);
-const appVersion = `v1.0.${patch}`;
+// 版本號直接讀 package.json，每次 commit 手動 +0.01。
+// 不再用 git commit 數推算：Vercel 淺層 clone 會少算，導致線上版本號卡住。
+const appVersion = `v${pkg.version}`;
 
 // 部署時的 commit 短碼：Vercel 有提供環境變數，本地則用 git 取得
 const commit =
